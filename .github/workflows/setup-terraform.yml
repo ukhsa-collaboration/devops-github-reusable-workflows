@@ -1,0 +1,20 @@
+name: 'Setup and Initialise Terraform'
+description: 'Sets up tfenv and initialises and validates Terraform'
+runs:
+  using: 'composite'
+  steps:
+    - name: 'Check and set terraform version'
+      run: |
+        if [[ ! "${{ inputs.terraform-version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: terraform-version input must be in the format v0-9.0-9.0-9 or be blank"
+          exit 1
+        else
+          tfenv use ${{ inputs.terraform-version }}
+        fi
+      if: ${{ inputs.terraform-version != '' }}
+
+    - name: 'Terraform Init'
+      run: terraform init
+
+    - name: 'Terraform Validate'
+      run: terraform validate
