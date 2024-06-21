@@ -7,10 +7,10 @@ inputs:
 
 runs:
   using: "composite"
-  shell: bash
-  
+
   steps:
   - name: 'Check and set Terraform version'
+    shell: bash
     run: |
       if [[ ! "${{ inputs.terraform-version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Error: terraform-version input must be in the format v0-9.0-9.0-9 or be blank"
@@ -21,7 +21,9 @@ runs:
     if: ${{ inputs.terraform-version != '' }}
 
   - name: 'Terraform Init'
+    shell: bash
     run: terraform init
 
   - name: 'Terraform Validate'
+    shell: bash
     run: terraform validate
