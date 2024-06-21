@@ -6,8 +6,13 @@ inputs:
     type: string
 
 runs:
- using: "composite"
+  using: "composite"
   steps:
+  - name: 'Checkout Repository'
+    uses: actions/checkout@v4
+    with:
+      ref: ${{ github.head_ref || github.ref_name }} 
+
   - name: 'Check and set Terraform version'
     run: |
       if [[ ! "${{ inputs.terraform-version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
