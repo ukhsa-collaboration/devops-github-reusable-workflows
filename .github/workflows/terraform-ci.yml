@@ -9,6 +9,7 @@ on:
       terraform-path:
         required: false
         type: string
+  workflow_dispatch:
 
 permissions:
   contents: write
