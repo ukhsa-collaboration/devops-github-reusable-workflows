@@ -1,9 +1,27 @@
-name: 'Setup and Initialise Terraform'
-description: 'Sets up tfenv and initialises and validates Terraform'
-runs:
-  using: 'composite'
-  steps:
-    - name: 'Check and set terraform version'
+name: 'Terraform Setup and Validate'
+
+on:
+  workflow_call:
+    inputs:
+      terraform-version:
+        required: false
+        type: string
+      terraform-path:
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  terraform-setup:
+    container: 
+      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 'Check and set Terraform version'
       run: |
         if [[ ! "${{ inputs.terraform-version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
           echo "Error: terraform-version input must be in the format v0-9.0-9.0-9 or be blank"
