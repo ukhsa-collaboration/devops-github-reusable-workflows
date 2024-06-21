@@ -28,7 +28,7 @@ jobs:
         ref: ${{ github.head_ref || github.ref_name }} 
 
     - name: 'Setup Terraform'
-      uses: ./.github/actions/setup-terraform.yml
+      uses: ./.github/actions/setup-terraform
 
     - name: 'Terraform Format'
       run: terraform fmt
