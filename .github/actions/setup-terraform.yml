@@ -16,9 +16,8 @@ permissions:
 
 jobs:
   terraform-setup:
-    container: 
-      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
-    runs-on: ubuntu-latest
+    runs:
+      using: 'composite'
     
     steps:
     - name: 'Checkout Repository'
