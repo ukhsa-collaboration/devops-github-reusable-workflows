@@ -39,24 +39,24 @@ jobs:
     # - name: 'Terraform Docs'
     #   run: terraform-docs markdown table --output-file README.md --output-mode inject "$(pwd)"
 
-    - name: Check for changes
-      id: git-status
-      run: |
-        git config --global --add safe.directory "$(pwd)"
-        if [ -n "$(git status --porcelain)" ]; then
-          echo "dirty=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "dirty=false" >> "$GITHUB_OUTPUT"
-        fi
+    # - name: Check for changes
+    #   id: git-status
+    #   run: |
+    #     git config --global --add safe.directory "$(pwd)"
+    #     if [ -n "$(git status --porcelain)" ]; then
+    #       echo "dirty=true" >> "$GITHUB_OUTPUT"
+    #     else
+    #       echo "dirty=false" >> "$GITHUB_OUTPUT"
+    #     fi
 
-    - name: Commit and push changes
-      if: ${{ steps.git-status.outputs.dirty }} == 'true'
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add -A
-        git commit -m "[automated] Terraform formatting and documentation updates"
-        git push
+    # - name: Commit and push changes
+    #   if: ${{ steps.git-status.outputs.dirty }} == 'true'
+    #   run: |
+    #     git config user.name "github-actions[bot]"
+    #     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    #     git add -A
+    #     git commit -m "[automated] Terraform formatting and documentation updates"
+    #     git push
 
   terraform-checks:
     container: 
@@ -80,7 +80,7 @@ jobs:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    needs: [terraform-formatting, terraform-checks]
+    needs: [ terraform-formatting, terraform-checks ]
     
     steps:
     - name: 'Checkout Repository'
