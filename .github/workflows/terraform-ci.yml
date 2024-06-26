@@ -15,10 +15,6 @@ jobs:
   pre-configuration:
     runs-on: ubuntu-latest
 
-    outputs:
-      core_folders: ${{ steps.find-folders.outputs.core_folders }}
-      app_folders: ${{ steps.find-folders.outputs.app_folders }}
-
     steps:
     - name: 'Checkout Repository'
       uses: actions/checkout@v4
@@ -55,6 +51,10 @@ jobs:
     - name: 'Terraform Folders'
       run: |
         echo "This action will use these Terraform folders: ${{ steps.find-folders.outputs.folders }}"
+
+    outputs:
+      core_folders: ${{ steps.find-folders.outputs.core_folders }}
+      app_folders: ${{ steps.find-folders.outputs.app_folders }}
 
   terraform-formatting:
     container: 
