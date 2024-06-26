@@ -25,14 +25,14 @@ jobs:
       id: find-folders
       run: |
         FOLDERS=$(find . -type f -name "*.tf" -exec dirname {} \; | sort -u)
-        CORE_FOLDERS=$(echo "$FOLDERS" | grep -E '^./core-services/' | sort -u)
-        APP_FOLDERS=$(echo "$FOLDERS" | grep -E '^./applications/' | sort -u)
+        CORE_FOLDERS=$(echo "$FOLDERS" | grep -E '^./core-services/' | sort -u | tr '\n' ',')
+        APP_FOLDERS=$(echo "$FOLDERS" | grep -E '^./applications/' | sort -u | tr '\n' ',')
         echo "core_folders=$CORE_FOLDERS" >> "$GITHUB_OUTPUT"
         echo "app_folders=$APP_FOLDERS" >> "$GITHUB_OUTPUT"
 
     - name: 'Check Core Services Folders'
       run: |
-        INVALID_CORE_FOLDERS=$(echo "${CORE_FOLDERS}" | grep -Ev '^./core-services/[0-9]')
+        INVALID_CORE_FOLDERS=$(echo "${CORE_FOLDERS}" | tr ',' '\n' | grep -Ev '^./core-services/[0-9]')
         if [ -n "$INVALID_CORE_FOLDERS" ]; then
           echo "All core services folders must be named with a number prefix"
           echo "Invalid Core Services Folders: $INVALID_CORE_FOLDERS"
@@ -41,7 +41,7 @@ jobs:
 
     - name: 'Check Application Folders'
       run: |
-        INVALID_APP_FOLDERS=$(echo "${APP_FOLDERS}" | grep -Ev '^./applications/[0-9]')
+        INVALID_APP_FOLDERS=$(echo "${APP_FOLDERS}" | tr ',' '\n' | grep -Ev '^./applications/[0-9]')
         if [ -n "$INVALID_APP_FOLDERS" ]; then
           echo "All application folders must be named with a number prefix"
           echo "Invalid Application Folders: $INVALID_APP_FOLDERS"
