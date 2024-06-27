@@ -6,12 +6,6 @@ on:
       terraform-version:
         required: false
         type: string
-  
-  workflow_dispatch:
-    inputs:
-      terraform-version:
-        required: false
-        type: string
 
 permissions:
   contents: write
