@@ -83,7 +83,7 @@ jobs:
         echo "This action will run these app-services: ${{ steps.find-folders.outputs.app_folders }}"
 
   terraform-formatting:
-    if: jobs.pre-configuration.outputs.changes == 'true'
+    if: needs.pre-configuration.outputs.changes == 'true'
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
@@ -127,7 +127,7 @@ jobs:
         git push
 
   terraform-checks:
-    if: jobs.pre-configuration.outputs.changes == 'true'
+    if: needs.pre-configuration.outputs.changes == 'true'
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
@@ -146,7 +146,7 @@ jobs:
       run: checkov -d . --quiet --compact
 
   terraform-run:
-    if: jobs.pre-configuration.outputs.changes == 'true'
+    if: needs.pre-configuration.outputs.changes == 'true'
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
