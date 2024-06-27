@@ -37,6 +37,7 @@ jobs:
         echo "app_folders=$APP_FOLDERS" >> "$GITHUB_OUTPUT"
 
     - name: 'Check if for changes'
+      id: check-changes
       run: |
         if [ -z "$CORE_FOLDERS" ] || [ -z "$APP_FOLDERS" ]; then
           echo "No Terraform changes found"
@@ -46,7 +47,7 @@ jobs:
         fi
 
     - name: 'Check Core Services Folders'
-      if: ${{ steps.find-folders.outputs.changes }} == 'true'
+      if: ${{ steps.check-changes.outputs.changes }} == 'true'
       run: |
         INVALID_CORE_FOLDERS=$(echo "$CORE_FOLDERS" | tr ' ' '\n' | grep -Ev '^core-services/[0-9]')
         if [ -n "$INVALID_CORE_FOLDERS" ]; then
@@ -56,7 +57,7 @@ jobs:
         fi
 
     - name: 'Check Application Folders'
-      if: ${{ steps.find-folders.outputs.changes }} == 'true'
+      if: ${{ steps.check-changes.outputs.changes }} == 'true'
       run: |
         INVALID_APP_FOLDERS=$(echo "$APP_FOLDERS" | tr ' ' '\n' | grep -Ev '^applications/[0-9]')
         if [ -n "$INVALID_APP_FOLDERS" ]; then
@@ -66,14 +67,15 @@ jobs:
         fi
 
     - name: 'Terraform Folders'
-      if: ${{ steps.find-folders.outputs.changes }} == 'true'
+      if: ${{ steps.check-changes.outputs.changes }} == 'true'
       run: |
-        echo "This action will use these Terraform folders: ${{ steps.find-folders.outputs.folders }}"
+        echo "This action will run these core-services: ${{ steps.find-folders.outputs.core_folders }}"
+        echo "This action will run these app-services: ${{ steps.find-folders.outputs.app_folders }}"
 
     outputs:
       core_folders: ${{ steps.find-folders.outputs.core_folders }}
       app_folders: ${{ steps.find-folders.outputs.app_folders }}
-      changes: ${{ steps.find-folders.outputs.changes }}
+      changes: ${{ steps.check-changes.outputs.changes }}
 
   terraform-formatting:
     container: 
