@@ -24,49 +24,56 @@ jobs:
     - name: 'Find Terraform Changes'
       id: find-folders
       run: |
-        FOLDERS=$(git diff --name-only HEAD^ HEAD | grep '\.tf$' | xargs -I {} dirname {} | sort -u | tr '\n' ' ')
-        CORE_FOLDERS=$(echo "$FOLDERS" | grep -E '^./core-services/' | sort -u | tr '\n' ', ' | sed 's/, $//')
-        APP_FOLDERS=$(echo "$FOLDERS" | grep -E '^./applications/' | sort -u | tr '\n' ', ' | sed 's/, $//')
+        FOLDERS=$(git diff --name-only HEAD^ HEAD | grep '\.tf$' | xargs -I {} dirname {})
+        CORE_FOLDERS=$(echo "$FOLDERS" | grep -E '^core-services/' | sort -u | tr '\n' ' ' | sed 's/ $//')
+        APP_FOLDERS=$(echo "$FOLDERS" | grep -E '^applications/' | sort -u | tr '\n' ' ' | sed 's/ $//')
         echo "core_folders=$CORE_FOLDERS" >> "$GITHUB_OUTPUT"
         echo "app_folders=$APP_FOLDERS" >> "$GITHUB_OUTPUT"
 
-    - name: 'Check if no changes'
+    - name: 'Check if for changes'
       run: |
         if [ -z "$CORE_FOLDERS" ] || [ -z "$APP_FOLDERS" ]; then
           echo "No Terraform changes found"
-          exit 1
+          echo "changes=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "changes=true" >> "$GITHUB_OUTPUT"
         fi
 
     - name: 'Check Core Services Folders'
+      if: ${{ steps.find-folders.outputs.changes }} == 'true'
       run: |
-        INVALID_CORE_FOLDERS=$(echo "${CORE_FOLDERS}" | tr ', ' '\n' | grep -Ev '^./core-services/[0-9]')
+        INVALID_CORE_FOLDERS=$(echo "$CORE_FOLDERS" | tr ' ' '\n' | grep -Ev '^core-services/[0-9]')
         if [ -n "$INVALID_CORE_FOLDERS" ]; then
-          echo "All core services folders must be named with a number prefix"
+          echo "All core services folders must be named with a number prefix (e.g. core-services/01-foo)"
           echo "Invalid Core Services Folders: $INVALID_CORE_FOLDERS"
           exit 1
         fi
 
     - name: 'Check Application Folders'
+      if: ${{ steps.find-folders.outputs.changes }} == 'true'
       run: |
-        INVALID_APP_FOLDERS=$(echo "${APP_FOLDERS}" | tr ', ' '\n' | grep -Ev '^./applications/[0-9]')
+        INVALID_APP_FOLDERS=$(echo "$APP_FOLDERS" | tr ' ' '\n' | grep -Ev '^applications/[0-9]')
         if [ -n "$INVALID_APP_FOLDERS" ]; then
-          echo "All application folders must be named with a number prefix"
+          echo "All application folders must be named with a number prefix (e.g. applications/01-bar)"
           echo "Invalid Application Folders: $INVALID_APP_FOLDERS"
           exit 1
         fi
 
     - name: 'Terraform Folders'
+      if: ${{ steps.find-folders.outputs.changes }} == 'true'
       run: |
         echo "This action will use these Terraform folders: ${{ steps.find-folders.outputs.folders }}"
 
     outputs:
       core_folders: ${{ steps.find-folders.outputs.core_folders }}
       app_folders: ${{ steps.find-folders.outputs.app_folders }}
+      changes: ${{ steps.find-folders.outputs.changes }}
 
   terraform-formatting:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
+    if: ${{ steps.find-folders.outputs.changes }} == 'true'
     needs: [ pre-configuration ]
     
     steps:
@@ -112,6 +119,7 @@ jobs:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
+    if: ${{ steps.find-folders.outputs.changes }} == 'true'
     needs: [ pre-configuration, terraform-formatting ] 
     
     steps:
@@ -132,6 +140,7 @@ jobs:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
+    if: ${{ steps.find-folders.outputs.changes }} == 'true'
     needs: [ pre-configuration, terraform-formatting, terraform-checks ]
     
     steps:
