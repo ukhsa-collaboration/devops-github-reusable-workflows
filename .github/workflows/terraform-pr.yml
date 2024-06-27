@@ -11,16 +11,25 @@ permissions:
   contents: write
   packages: read
 
+env:
+  GIT_REF: ${{ github.head_ref || github.ref_name }}
+  TF_VERSION: ${{ github.event.inputs.terraform-version }}
+
 jobs:
   pre-configuration:
     runs-on: ubuntu-latest
+
+    outputs:
+      core_folders: ${{ steps.find-folders.outputs.core_folders }}
+      app_folders: ${{ steps.find-folders.outputs.app_folders }}
+      changes: ${{ steps.check-changes.outputs.changes }}
 
     steps:
     - name: 'Checkout Repository'
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        ref: ${{ github.head_ref || github.ref_name }}
+        ref: ${{ env.GIT_REF }}
 
     - name: 'Find Terraform Changes'
       id: find-folders
@@ -31,7 +40,7 @@ jobs:
         echo "core_folders=$CORE_FOLDERS" >> "$GITHUB_OUTPUT"
         echo "app_folders=$APP_FOLDERS" >> "$GITHUB_OUTPUT"
 
-    - name: 'Check if for changes'
+    - name: 'Check for changes'
       id: check-changes
       run: |
         if [ -z "$CORE_FOLDERS" ] || [ -z "$APP_FOLDERS" ]; then
@@ -42,7 +51,7 @@ jobs:
         fi
 
     - name: 'Check Core Services Folders'
-      if: ${{ steps.check-changes.outputs.changes }} == 'true'
+      if: ${{ steps.check-changes.outputs.changes }} == true
       run: |
         INVALID_CORE_FOLDERS=$(echo "$CORE_FOLDERS" | tr ' ' '\n' | grep -Ev '^core-services/[0-9]')
         if [ -n "$INVALID_CORE_FOLDERS" ]; then
@@ -52,7 +61,7 @@ jobs:
         fi
 
     - name: 'Check Application Folders'
-      if: ${{ steps.check-changes.outputs.changes }} == 'true'
+      if: ${{ steps.check-changes.outputs.changes }} == true
       run: |
         INVALID_APP_FOLDERS=$(echo "$APP_FOLDERS" | tr ' ' '\n' | grep -Ev '^applications/[0-9]')
         if [ -n "$INVALID_APP_FOLDERS" ]; then
@@ -62,33 +71,28 @@ jobs:
         fi
 
     - name: 'Terraform Folders'
-      if: ${{ steps.check-changes.outputs.changes }} == 'true'
+      if: ${{ steps.check-changes.outputs.changes }} == true
       run: |
         echo "This action will run these core-services: ${{ steps.find-folders.outputs.core_folders }}"
         echo "This action will run these app-services: ${{ steps.find-folders.outputs.app_folders }}"
 
-    outputs:
-      core_folders: ${{ steps.find-folders.outputs.core_folders }}
-      app_folders: ${{ steps.find-folders.outputs.app_folders }}
-      changes: ${{ steps.check-changes.outputs.changes }}
-
   terraform-formatting:
+    if: ${{ needs.pre-configuration.outputs.changes }} == true
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    if: ${{ needs.pre-configuration.outputs.changes }} == 'true'
     needs: [ pre-configuration ]
     
     steps:
     - name: 'Checkout Repository'
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.head_ref || github.ref_name }}
+        ref: ${{ env.GIT_REF }}
 
     - name: 'Setup Terraform'
       uses: ukhsa-internal/devops-github-reusable-workflows/.github/actions/setup-terraform@main
       with:
-        terraform-version: ${{ github.event.inputs.terraform-version }}
+        terraform-version: ${{ env.TF_VERSION }}
 
     - name: 'Terraform Format'
       run: terraform fmt
@@ -110,7 +114,7 @@ jobs:
         fi
 
     - name: Commit and push changes
-      if: ${{ steps.git-status.outputs.dirty }} == 'true'
+      if: ${{ steps.git-status.outputs.dirty }} == true
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -119,43 +123,43 @@ jobs:
         git push
 
   terraform-checks:
+    if: ${{ needs.pre-configuration.outputs.changes }} == true
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    if: ${{ needs.pre-configuration.outputs.changes }} == 'true'
     needs: [ pre-configuration, terraform-formatting ] 
     
     steps:
     - name: 'Checkout Repository'
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.head_ref || github.ref_name }}
+        ref: ${{ env.GIT_REF }}
 
     - name: 'Setup Terraform'
       uses: ukhsa-internal/devops-github-reusable-workflows/.github/actions/setup-terraform@main
       with:
-        terraform-version: ${{ github.event.inputs.terraform-version }}
+        terraform-version: ${{ env.TF_VERSION }}
 
     - name: 'Checkov Scan'
       run: checkov -d . --quiet --compact
 
   terraform-run:
+    if: ${{ needs.pre-configuration.outputs.changes }} == true
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    if: ${{ needs.pre-configuration.outputs.changes }} == 'true'
     needs: [ pre-configuration, terraform-formatting, terraform-checks ]
     
     steps:
     - name: 'Checkout Repository'
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.head_ref || github.ref_name }}
+        ref: ${{ env.GIT_REF }}
 
     - name: 'Setup Terraform'
       uses: ukhsa-internal/devops-github-reusable-workflows/.github/actions/setup-terraform@main
       with:
-        terraform-version: ${{ github.event.inputs.terraform-version }}
+        terraform-version: ${{ env.TF_VERSION }}
 
     - name: 'Terraform Plan'
       run: terraform plan -no-color -input=false
