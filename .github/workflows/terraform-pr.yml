@@ -74,7 +74,6 @@ jobs:
         fi
 
     - name: 'Terraform Folders'
-               steps.git-status.outputs.dirty
       if: ${{ steps.check-changes.outputs.changes }}
       run: |
         echo "This action will run these core-services: ${{ steps.find-folders.outputs.core_folders }}"
