@@ -1,4 +1,4 @@
-name: 'Terraform CI'
+name: 'Terraform Push'
 
 on:
   workflow_call:
@@ -21,18 +21,25 @@ jobs:
       with:
         ref: ${{ github.head_ref || github.ref_name }}
 
-    - name: 'Find Terraform Folders'
+    - name: 'Find All Terraform Folders'
       id: find-folders
       run: |
         FOLDERS=$(find . -type f -name "*.tf" -exec dirname {} \; | sort -u)
-        CORE_FOLDERS=$(echo "$FOLDERS" | grep -E '^./core-services/' | sort -u | tr '\n' ',')
-        APP_FOLDERS=$(echo "$FOLDERS" | grep -E '^./applications/' | sort -u | tr '\n' ',')
+        CORE_FOLDERS=$(echo "$FOLDERS" | grep -E '^./core-services/' | sort -u | tr '\n' ', ' | sed 's/, $//')
+        APP_FOLDERS=$(echo "$FOLDERS" | grep -E '^./applications/' | sort -u | tr '\n' ', ' | sed 's/, $//')
         echo "core_folders=$CORE_FOLDERS" >> "$GITHUB_OUTPUT"
         echo "app_folders=$APP_FOLDERS" >> "$GITHUB_OUTPUT"
 
+    - name: 'Check if no changes'
+      run: |
+        if [ -z "$CORE_FOLDERS" ] || [ -z "$APP_FOLDERS" ]; then
+          echo "No Terraform files found"
+          exit 1
+        fi
+
     - name: 'Check Core Services Folders'
       run: |
-        INVALID_CORE_FOLDERS=$(echo "${CORE_FOLDERS}" | tr ',' '\n' | grep -Ev '^./core-services/[0-9]')
+        INVALID_CORE_FOLDERS=$(echo "${CORE_FOLDERS}" | tr ', ' '\n' | grep -Ev '^./core-services/[0-9]')
         if [ -n "$INVALID_CORE_FOLDERS" ]; then
           echo "All core services folders must be named with a number prefix"
           echo "Invalid Core Services Folders: $INVALID_CORE_FOLDERS"
@@ -41,7 +48,7 @@ jobs:
 
     - name: 'Check Application Folders'
       run: |
-        INVALID_APP_FOLDERS=$(echo "${APP_FOLDERS}" | tr ',' '\n' | grep -Ev '^./applications/[0-9]')
+        INVALID_APP_FOLDERS=$(echo "${APP_FOLDERS}" | tr ', ' '\n' | grep -Ev '^./applications/[0-9]')
         if [ -n "$INVALID_APP_FOLDERS" ]; then
           echo "All application folders must be named with a number prefix"
           echo "Invalid Application Folders: $INVALID_APP_FOLDERS"
@@ -50,7 +57,8 @@ jobs:
 
     - name: 'Terraform Folders'
       run: |
-        echo "This action will use these Terraform folders: ${{ steps.find-folders.outputs.folders }}"
+        echo "This action will run these core-services: ${{ steps.find-folders.outputs.core_folders }}"
+        echo "This action will run these app-services: ${{ steps.find-folders.outputs.app_folders }}"
 
     outputs:
       core_folders: ${{ steps.find-folders.outputs.core_folders }}
