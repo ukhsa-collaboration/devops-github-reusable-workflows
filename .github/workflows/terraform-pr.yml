@@ -73,7 +73,7 @@ jobs:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    if: ${{ steps.find-folders.outputs.changes }} == 'true'
+    if: ${{ needs.pre-configuration.outputs.changes }} == 'true'
     needs: [ pre-configuration ]
     
     steps:
@@ -119,7 +119,7 @@ jobs:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    if: ${{ steps.find-folders.outputs.changes }} == 'true'
+    if: ${{ needs.pre-configuration.outputs.changes }} == 'true'
     needs: [ pre-configuration, terraform-formatting ] 
     
     steps:
@@ -140,7 +140,7 @@ jobs:
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
-    if: ${{ steps.find-folders.outputs.changes }} == 'true'
+    if: ${{ needs.pre-configuration.outputs.changes }} == 'true'
     needs: [ pre-configuration, terraform-formatting, terraform-checks ]
     
     steps:
