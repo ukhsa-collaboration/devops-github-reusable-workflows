@@ -43,16 +43,18 @@ jobs:
     - name: 'Check for changes'
       id: check-changes
       run: |
+        echo "Core folders: $CORE_FOLDERS"
+        echo "App folders: $APP_FOLDERS"
         if [ -z "$CORE_FOLDERS" ] || [ -z "$APP_FOLDERS" ]; then
           echo "No Terraform changes found"
           echo "changes=false" >> "$GITHUB_OUTPUT"
         else
           echo "changes=true" >> "$GITHUB_OUTPUT"
         fi
-        echo "${{ steps.check-changes.outputs.changes }}"
+        echo "Test: ${{ steps.check-changes.outputs.changes }}"
 
     - name: 'Check Core Services Folders'
-      if: ${{ steps.check-changes.outputs.changes }} == true
+      if: ${{ steps.check-changes.outputs.changes }}
       run: |
         INVALID_CORE_FOLDERS=$(echo "$CORE_FOLDERS" | tr ' ' '\n' | grep -Ev '^core-services/[0-9]')
         if [ -n "$INVALID_CORE_FOLDERS" ]; then
@@ -62,7 +64,7 @@ jobs:
         fi
 
     - name: 'Check Application Folders'
-      if: ${{ steps.check-changes.outputs.changes }} == true
+      if: ${{ steps.check-changes.outputs.changes }}
       run: |
         INVALID_APP_FOLDERS=$(echo "$APP_FOLDERS" | tr ' ' '\n' | grep -Ev '^applications/[0-9]')
         if [ -n "$INVALID_APP_FOLDERS" ]; then
@@ -72,13 +74,14 @@ jobs:
         fi
 
     - name: 'Terraform Folders'
-      if: ${{ steps.check-changes.outputs.changes }} == true
+               steps.git-status.outputs.dirty
+      if: ${{ steps.check-changes.outputs.changes }}
       run: |
         echo "This action will run these core-services: ${{ steps.find-folders.outputs.core_folders }}"
         echo "This action will run these app-services: ${{ steps.find-folders.outputs.app_folders }}"
 
   terraform-formatting:
-    if: ${{ needs.pre-configuration.outputs.changes }} == true
+    if: ${{ needs.pre-configuration.outputs.changes }}
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
@@ -115,7 +118,7 @@ jobs:
         fi
 
     - name: Commit and push changes
-      if: ${{ steps.git-status.outputs.dirty }} == true
+      if: ${{ steps.git-status.outputs.dirty }}
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -124,7 +127,7 @@ jobs:
         git push
 
   terraform-checks:
-    if: ${{ needs.pre-configuration.outputs.changes }} == true
+    if: ${{ needs.pre-configuration.outputs.changes }}
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
@@ -145,7 +148,7 @@ jobs:
       run: checkov -d . --quiet --compact
 
   terraform-run:
-    if: ${{ needs.pre-configuration.outputs.changes }} == true
+    if: ${{ needs.pre-configuration.outputs.changes }}
     container: 
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
     runs-on: ubuntu-latest
