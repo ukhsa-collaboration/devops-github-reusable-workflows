@@ -7,12 +7,6 @@ on:
         required: false
         type: string
 
-  workflow_dispatch:
-    inputs:
-      terraform-version:
-        required: false
-        type: string
-
 permissions:
   contents: write
   packages: read
@@ -37,6 +31,7 @@ jobs:
       - name: 'Finding Folders with Terraform Changes'
         id: detect
         run: |
+          set -e
           FOLDERS=$(git diff --name-only HEAD^ HEAD | (grep '\.tf$' || true) | xargs -I {} dirname {})
           CORE_FOLDERS=$(echo "$FOLDERS" | (grep -E '^core-services/' || true) | sort -u | tr '\n' ' ' | sed 's/ $//')
           APP_FOLDERS=$(echo "$FOLDERS" | (grep -E '^applications/' || true) | sort -u | tr '\n' ' ' | sed 's/ $//')
@@ -55,6 +50,7 @@ jobs:
       - name: 'Check Invalid Core Services Folders'
         if: steps.detect.outputs.changes == 'true'
         run: |
+          set -e
           INVALID_FOLDERS=$(echo "${{ steps.detect.outputs.folders}}" | tr ' ' '\n' | (grep -Ev '^core-services/[0-9][0-9]|^applications/[0-9][0-9]' || true))
           if [ -n "$INVALID_FOLDERS" ]; then
             echo "All core services and application folders must be named with a number prefix (e.g. core-services/01-foo, applications/01-bar)."
@@ -152,49 +148,69 @@ jobs:
             echo "dirty=false" >> "$GITHUB_OUTPUT"
           fi
 
-  #   - name: Commit and push changes
-  #     if: steps.git-status.outputs.dirty
-  #     run: |
-  #       git config user.name "github-actions[bot]"
-  #       git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-  #       git add -A
-  #       git commit -m "[automated] Terraform formatting and documentation updates"
-  #       git push
+      - name: Commit and push changes
+        if: steps.git-status.outputs.dirty
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "[automated] Terraform formatting and documentation updates"
+          git push
 
-  # terraform-checks:
-  #   if: needs.pre-configuration.outputs.changes == 'true'
-  #   container: 
-  #     image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
-  #   runs-on: ubuntu-latest
-  #   needs: [ pre-configuration, terraform-formatting ] 
+  terraform-tests:
+    if: needs.pre-configuration.outputs.changes == 'true'
+    container: 
+      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
+    runs-on: ubuntu-latest
+    needs: [ pre-configuration, terraform-formatting ] 
     
-  #   steps:
-  #   - name: 'Checkout Repository'
-  #     uses: actions/checkout@v4
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
 
-  #   - name: 'Setup Terraform'
-  #     uses: ukhsa-internal/devops-github-reusable-workflows/.github/actions/setup-terraform@main
-  #     with:
-  #       terraform-version: ${{ env.TF_VERSION }}
+      - name: 'Checkov Scan'
+        run: |
+          for FOLDER in ${{ needs.pre-configuration.outputs.folders }}; do
+            TFDIR="${{ github.workspace }}/$FOLDER"
+            echo "\033[1m$FOLDER - checkov\033[0m"
+            checkov -d "$TFDIR" --quiet --compact
+          done
 
-  #   - name: 'Checkov Scan'
-  #     run: checkov -d . --quiet --compact
-
-  # terraform-run:
-  #   if: needs.pre-configuration.outputs.changes == 'true'
-  #   container: 
-  #     image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
-  #   runs-on: ubuntu-latest
-  #   needs: [ pre-configuration, terraform-formatting, terraform-checks ]
+  terraform-run:
+    if: needs.pre-configuration.outputs.changes == 'true'
+    container: 
+      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
+    runs-on: ubuntu-latest
+    needs: [ pre-configuration, terraform-formatting, terraform-tests ]
     
-  #   steps:
-  #   - name: 'Checkout Repository'
-  #     uses: actions/checkout@v4
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
 
-  #   - name: 'Setup Terraform'
-  #     uses: ukhsa-internal/devops-github-reusable-workflows/.github/actions/setup-terraform@main
-  #     with:
-  #       terraform-version: ${{ env.TF_VERSION }}
+      - name: 'Check and set Terraform version'
+        if: env.TF_VERSION != ''
+        shell: bash
+        run: |
+          if [[ ! "${{ env.TF_VERSION }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: input terraform-version must use the [0-9]+.[0-9]+.[0-9]+ format. (e.g. 1.9.0)"
+            echo "If left blank v$(terraform --version | grep -oP 'Terraform v\K[0-9.]+') will be used."
+            exit 1
+          else
+            tfenv use "${{ env.TF_VERSION }}"
+          fi
 
-  #   - name: 'Terraform Plan'
-  #     run: terraform plan -no-color -input=false
+      - name: 'Terraform Init'
+        run: |
+          for FOLDER in ${{ needs.pre-configuration.outputs.folders }}; do
+            cd "${{ github.workspace }}/$FOLDER"
+            echo "\033[1m$FOLDER - terraform init\033[0m"
+            terraform init -no-color -input=false; echo ""
+          done
+
+      - name: 'Terraform Plan'
+        run: |
+          for FOLDER in ${{ needs.pre-configuration.outputs.folders }}; do
+            cd "${{ github.workspace }}/$FOLDER"
+            echo "\033[1m$FOLDER - terraform plan\033[0m"
+            terraform plan -no-color -input=false
+          done
