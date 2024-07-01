@@ -35,7 +35,7 @@ jobs:
           FOLDERS=$(git diff --name-only HEAD^ HEAD | (grep '\.tf$' || true) | xargs -I {} dirname {})
           CORE_FOLDERS=$(echo "$FOLDERS" | (grep -E '^core-services/' || true) | sort -u | tr '\n' ' ' | sed 's/ $//')
           APP_FOLDERS=$(echo "$FOLDERS" | (grep -E '^applications/' || true) | sort -u | tr '\n' ' ' | sed 's/ $//')
-          ALL_FOLDERS=$(echo "$CORE_FOLDERS $APP_FOLDERS")
+          ALL_FOLDERS=$(echo "$CORE_FOLDERS $APP_FOLDERS" | sed 's/^ *//;s/ *$//')
 
           if [ -z "$ALL_FOLDERS" ]; then
             echo "No Terraform changes found."
