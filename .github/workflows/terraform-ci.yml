@@ -111,7 +111,7 @@ jobs:
         env:
           DIRECTORY: "${{ matrix.directory }}"
         run: |
-          files_to_copy=("providers.tf" "terraform.tf")
+          files_to_copy=("providers.tf" "terraform.tf" ".terraform.lock.hcl")
 
           for FILE in "${files_to_copy[@]}"; do
             if [[ ! -f "$DIRECTORY"/"$FILE" ]]; then
