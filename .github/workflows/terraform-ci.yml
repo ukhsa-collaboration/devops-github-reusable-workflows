@@ -150,6 +150,10 @@ jobs:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
+          echo $AWS_ACCOUNT_ID
+          echo $AWS_REGION
+          echo $ENVIRONMENT_NAME
+          echo $DIRECTORY
           state_name=$(basename "$DIRECTORY")
           terraform init \
             -backend-config=dynamodb_table="${AWS_REGION}"-state-locks \
