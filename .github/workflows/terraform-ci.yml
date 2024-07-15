@@ -137,6 +137,7 @@ jobs:
         id: backend
         run: |
           echo "Working in $(pwd)"
+          pwd
           backend_type=$(grep -oP 'backend\s+"?\K[^"\s]+' ./backend.tf)
           echo "backend_type=$backend_type" >> $GITHUB_OUTPUT
 
