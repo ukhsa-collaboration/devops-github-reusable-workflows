@@ -116,6 +116,7 @@ jobs:
           for FILE in "${files_to_copy[@]}"; do
             if [[ ! -f "$DIRECTORY"/"$FILE" ]]; then
                 cp "$FILE" "$DIRECTORY"/
+                echo "Copied $FILE to $DIRECTORY"
             else
               echo "NOTE - $(basename "$DIRECTORY") has its own "$FILE" file. Not copying "$FILE" from root"
             fi
