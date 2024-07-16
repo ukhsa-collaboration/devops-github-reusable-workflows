@@ -1,7 +1,9 @@
 name: "[CI] Lint and Deploy Terraform stacks"
 on:
   workflow_dispatch:
-    
+  push:
+    branches:
+      - feature/DOE-80
   workflow_call:
     inputs:
       environment_name:
