@@ -1,5 +1,7 @@
 name: "[CI] Lint and Deploy Terraform stacks"
 on:
+  workflow_dispatch:
+    
   workflow_call:
     inputs:
       environment_name:
@@ -43,6 +45,9 @@ jobs:
 
       - name: SAST Scanning with Checkov
         uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
+
+      - name: TFLint
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@feature/DOE-80
 
   define_matrix:
     name: Define directory matrix
