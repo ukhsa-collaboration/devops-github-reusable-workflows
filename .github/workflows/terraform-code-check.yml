@@ -1,0 +1,78 @@
+name: "[Analysis] Check Terraform Code"
+on:
+  workflow_call:
+
+jobs:
+  check:
+    name: Lint and Scan Terraform code
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create pending check
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/github-status-check@main
+        id: create_check
+        with:
+          name: "terraform-checks"
+          status: "in_progress"
+          title: "Terraform code checks"
+          summary: "Terraform code checks are currently in-progress"
+          details: |
+            | Check              | Status                             |
+            | :----------------: | :--------------------------------: |
+            | Terraform Format   |  :hourglass_flowing_sand: Pending  |
+            | Terraform Linting  |  :hourglass_flowing_sand: Pending  |
+            | Checkov Scan       |  :hourglass_flowing_sand: Pending  |
+
+      - name: Terraform Formatting
+        id: tf_fmt
+        continue-on-error: true
+        run: terraform fmt --recursive --check
+
+      - name: Terraform Linting with tflint
+        id: tf_lint
+        continue-on-error: true
+        run: tflint --recursive --disable-rule terraform_required_version --disable-rule terraform_required_providers
+
+      - name: SAST Scan Terraform code
+        id: tf_scan
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
+
+      - name: Check step status
+        shell: bash
+        run: |
+          if [[ "${{ steps.tf_fmt.outcome }}" == "success" && "${{ steps.tf_lint.outcome }}" == "success" && "${{ steps.tf_scan.outcome }}" == "success" ]]; then
+              echo "job_status=success" >> $GITHUB_ENV
+          else
+              echo "job_status=failure" >> $GITHUB_ENV
+          fi
+
+          # Update the individual checks
+          tf_fmt=":white_check_mark: Passed" 
+          tf_lint=":white_check_mark: Passed"
+          tf_scan=":white_check_mark: Passed"
+          [[ "${{ steps.tf_fmt.outcome }}" != "success" ]] && tf_fmt=":heavy_exclamation_mark: Failed"
+          [[ "${{ steps.tf_lint.outcome }}" != "success" ]] && tf_lint=":heavy_exclamation_mark: Failed"
+          [[ "${{ steps.tf_scan.outcome }}" != "success" ]] && tf_scan=":heavy_exclamation_mark: Failed"
+
+          echo "tf_fmt=$tf_fmt" >> $GITHUB_ENV
+          echo "tf_lint=$tf_lint" >> $GITHUB_ENV
+          echo "tf_scan=$tf_scan" >> $GITHUB_ENV
+
+      - name: Update check with result
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/github-status-check@main
+        with:
+          name: "terraform-checks"
+          status: "completed"
+          title: "Terraform code checks"
+          summary: "Terraform code checks have completed"
+          conclusion: "${{ env.job_status }}"
+          check-run-id: ${{ steps.create_check.outputs.check-run-id }}
+          details: |
+            | Check              | Status              |
+            | :----------------- | :-----------------: |
+            | Terraform Format   |  ${{ env.tf_fmt }}  |
+            | Terraform Linting  |  ${{ env.tf_lint }} |
+            | Checkov Scan       |  ${{ env.tf_scan }} |
