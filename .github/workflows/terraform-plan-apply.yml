@@ -1,4 +1,4 @@
-name: "[CI] Lint and Deploy Terraform stacks"
+name: "[CI] Deploy Terraform stacks"
 on:
   workflow_call:
     inputs:
@@ -10,6 +10,15 @@ on:
         required: false
         default: eu-west-2
         type: string
+      destructive_action_check:
+        required: false
+        type: boolean
+        default: false
+      checkov_deep_scan:
+        required: false
+        type: boolean
+        default: false
+
     secrets:
       AWS_ACCESS_KEY_ID:
         required: false
@@ -29,20 +38,7 @@ on:
 jobs:
   check:
     name: Lint and SAST Scan Terraform code
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Terraform Formatting
-        run: terraform fmt --recursive --check
-
-      - name: Terraform Linting with tflint
-        run: tflint --recursive --disable-rule terraform_required_version --disable-rule terraform_required_providers
-
-      - name: SAST Scanning with Checkov
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
+    uses: ./.github/workflows/terraform-code-check.yml
 
   define_matrix:
     name: Define directory matrix
@@ -51,7 +47,6 @@ jobs:
       directories: "${{ steps.directories.outputs.json_directory_list }}"
     steps:
       - uses: actions/checkout@v4
-
       - name: Determine order to run Terraform stacks
         uses: >-
           UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
@@ -213,9 +208,7 @@ jobs:
           terraform show -json tfplan | jq > tfplan.json
 
       - name: SAST Scanning with Checkov (Deep)
-        if: >-
-          ${{ inputs.environment_name == 'prod' ||
-          inputs.environment_name == 'preprd' }}
+        if: ${{ inputs.checkov_deep_scan }}
         uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
         with:
           scan_type: deep
@@ -224,9 +217,7 @@ jobs:
 
       - name: Terraform Destructive Actions Check
         working-directory: "${{ matrix.directory }}"
-        if: >-
-          ${{ inputs.environment_name == 'prod' ||
-           inputs.environment_name == 'preprd' }}
+        if: ${{ inputs.destructive_action_check }}
         run: |
           delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
 
