@@ -12,20 +12,25 @@ on:
         type: string
       stack:
         required: false
+        type: string
       run_formatting:
         required: false
-        default: 'true'
+        type: string
       run_tflint:
         required: false
-        default: 'true'
+        type: string
       run_light_sast:
         required: false
-        default: 'true'
+        type: string
       run_deep_sast: # requires inputs.plan == 'true'.
         required: false
-      plan: # requires credentials to be configured.
+        type: string
+      plan: # requires AWS|Azure credentials to be configured.
         required: false
+        type: string
     secrets:
+      GITHUB_TOKEN:
+        required: false
       AWS_ACCESS_KEY_ID:
         required: false
       AWS_SECRET_ACCESS_KEY:
@@ -66,10 +71,14 @@ jobs:
       - name: SAST Scanning with Checkov
         if: ${{ inputs.run_light_sast == 'true' }}
         uses: ukhsa-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   define_matrix:
     name: Define directory matrix
     runs-on: ubuntu-latest
+    container:
+      image: catthehacker/ubuntu:act-22.04
     if: ${{ inputs.plan == 'true' }}
     outputs:
       directories: "${{ steps.filter_directories.outputs.filtered_directories }}"
@@ -80,6 +89,8 @@ jobs:
         uses: >-
           ukhsa-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
         id: directories
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Filter directories based on the set stack
         id: filter_directories
@@ -102,6 +113,8 @@ jobs:
   build:
     name: "Build Infrastructure - ${{ matrix.directory }}"
     runs-on: ubuntu-latest
+    container:
+      image: catthehacker/ubuntu:act-22.04
     if: ${{ inputs.plan == 'true' }}
     defaults:
       run:
@@ -171,6 +184,7 @@ jobs:
         id: terraform_version
         with:
           tf_file: "${{ matrix.directory }}/terraform.tf"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -255,7 +269,13 @@ jobs:
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
         run: |
           terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
-          terraform show -json tfplan | jq > tfplan.json
+
+          if [ -s tfplan ]; then
+            terraform show -json tfplan | jq > tfplan.json
+          else
+            echo "No changes detected in the Terraform plan."
+            echo '{}' > tfplan.json
+          fi
 
       - name: SAST Scanning with Checkov (Deep)
         uses: ukhsa-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
@@ -265,4 +285,5 @@ jobs:
         with:
           scan_type: deep
           tfplan_file: "${{ matrix.directory }}/tfplan.json"
-          scan_directory: "${{ matrix.directory }}"
+          scan_directory: "${{ matrix.directory }}"        
+          github-token: ${{ secrets.GITHUB_TOKEN }}
