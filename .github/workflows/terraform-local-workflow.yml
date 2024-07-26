@@ -100,9 +100,17 @@ jobs:
 
           # Filter the directories based on the stack input
           if [ -n "$stack" ]; then
+
             filtered_directories=$(echo $directories | jq --arg stack "$stack" '[.[] | select(endswith($stack))]')
+            
+            # Check if the stack exists within directories
+            if [ "$(echo $filtered_directories | jq 'length')" -eq 0 ]; then
+              echo "No stack found for '$stack'. Exiting."
+              exit 1
+            fi
+
           else
-            # If stack input is emptry, continue with original ordered list.
+            # If stack input is empty, continue with original ordered list of stacks.
             filtered_directories=$directories
           fi
 
