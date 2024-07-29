@@ -35,13 +35,12 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
    - From the [template repository](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main), you can copy the required Act configuration files:
      - `.actrc`
      - `.github/act/.input`
-     - `.github/act/.secret`
+     - `.github/act/.secret.template`
      - and the appropriate `.gitignore` changes:
      ```sh
      # Act secrets
      .secret
      .github/act/.secret
-     !.github/act/.secret
      ```
 
 3. **Configure Inputs**:
@@ -58,6 +57,7 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
 
 4. **Configure Secrets**:
    - Only the `GITHUB_TOKEN` is required for minimal workflow testing. The cloud service provider credentials are required if you want to connect to the remote environment to run a plan and deep analysis.
+   - Copy the `.github/act/.secret.template` file to `.github/act/.secret`.
    - Copy your GitHub PAT and appropriate cloud service provider credentials into the `.github/act/.secret` file. 
 
 5. **Create local workflow**:
