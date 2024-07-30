@@ -30,7 +30,7 @@ on:
         type: string
     secrets:
       GITHUB_TOKEN:
-        required: false
+        required: true
       AWS_ACCESS_KEY_ID:
         required: false
       AWS_SECRET_ACCESS_KEY:
@@ -116,7 +116,7 @@ jobs:
 
           # Ensure the output is in compact JSON format
           filtered_directories=$(echo $filtered_directories | jq -c .)
-          echo "::set-output name=filtered_directories::$filtered_directories"
+          echo "filtered_directories=$filtered_directories" >> $GITHUB_OUTPUT
 
   build:
     name: "Build Infrastructure - ${{ matrix.directory }}"

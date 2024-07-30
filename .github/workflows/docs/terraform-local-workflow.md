@@ -46,19 +46,32 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
 3. **Configure Inputs**:
    - The `.github/act/.input` file is configurable dependent on what elements of the workflow you want to run. Every field is optional and reflect the same steps that are invoked in the remote workflows. 
 
-    | Input          | Values                | Description |
-    |----------------|-----------------------|-------------|
-    | stack          | a singular stack name | Leave empty if you want to run the workflow against all Terraform stacks. |
-    | run_formatting | true \| false         | To run the `terrform format` step or not. |
-    | run_tflint     | true \| false         | To run the `tflint` step or not. |
-    | run_light_sast | true \| false         | To run light SAST scans or not. |
-    | run_deep_sast  | true \| false         | To run deep SAST scans or not. **Requires `plan` to be `true`**. |
-    | plan           | true \| false         | To run the `terrform plan` step or not. |
+   | Input          | Values                | Description |
+   |----------------|-----------------------|-------------|
+   | stack          | a singular stack name | Leave empty if you want to run the workflow against all Terraform stacks. |
+   | run_formatting | true \| false         | To run the `terrform format` step or not. |
+   | run_tflint     | true \| false         | To run the `tflint` step or not. |
+   | run_light_sast | true \| false         | To run light SAST scans or not. |
+   | run_deep_sast  | true \| false         | To run deep SAST scans or not. **Requires `plan` to be `true`**. |
+   | plan           | true \| false         | To run the `terrform plan` step or not. |
 
 4. **Configure Secrets**:
    - Only the `GITHUB_TOKEN` is required for minimal workflow testing. The cloud service provider credentials are required if you want to connect to the remote environment to run a plan and deep analysis.
    - Copy the `.github/act/.secret.template` file to `.github/act/.secret`.
-   - Copy your GitHub PAT and appropriate cloud service provider credentials into the `.github/act/.secret` file. 
+   - Populate the `.github/act/.secret` file with the following values:
+
+   | Secret                | Values                     | Description |
+   |-----------------------|----------------------------|-------------|
+   | GITHUB_TOKEN           | Your GitHub PAT           | This is a mandatory secret as dependent repositories are private. |
+   | AWS_ACCESS_KEY_ID*     | Your AWS Access Key       | The AWS Access Key for your personal IAM user. |
+   | AWS_SECRET_ACCESS_KEY* | Your AWS Secret Key       | The associated AWS Secret Key for your personal IAM user. |
+   | AWS_ACCOUNT_ID*        | The AWS account ID        | The account that you want to deploy / plan against. This contains the statefile bucket and the resources. |
+   | AWS_ROLE_NAME*         | local-workflow-role       | This is the default name of the role to be provisioned with minimal permissions to permit running `terraform plan` as part of the local worklow. |
+   | AZURE_CLIENT_ID*       | Your Service Principal ID | This Service Principal must only have permission to run `terraform plan`.  |
+   | AZURE_TENANT_ID*       | The Azure Tenant ID       | The Tenant ID where your Service Principal and subscription are located. |
+   | AZURE_SUBSCRIPTION_ID* | Your Subscription ID      | The subscription that you want to deploy / plan against. This contains the statefile store and the resources. |
+
+   *Optional secrets, for if you want to connect to your remote environment.
 
 5. **Create local workflow**:
    - From the template repository, you can copy the [local workflow configuration](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main/.github/workflows/local_workflow.yml) into your repository.
@@ -72,7 +85,7 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
 8. **Run the Workflow**:
    - Within your new terminal, execute the following command to run the workflow using Act:
      ```sh
-     act -W .github/workflows/local_workflow.yaml
+     act -W .github/workflows/local_workflow.yml
      ```
 
 ### If you're running into difficulties, reset and try again!
