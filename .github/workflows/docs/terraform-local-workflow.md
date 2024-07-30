@@ -28,10 +28,14 @@ Before you begin, ensure you have the following installed and configured:
 
 Follow these steps to set up and run the [local workflow](terraform-local-workflow.yml) using DevContainers and Act:
 
-1. **Create DevContainer configuration**:
+1. **Authenticate to the GitHub Container Registry**:
+   - Currently, there's an image within a private registry in GHCR. You'll need to authenticate locally before the workflows can pull the image.
+   - `echo $GITHUB_PAT | docker login ghcr.io -u <github-user-name> --password-stdin`
+
+2. **Create DevContainer configuration**:
    - From the template repository, you can copy the minimum required [DevContainer configuration](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main/.devcontainer) and create the same contents within your repository. 
 
-2. **Create Act configuration files**:
+3. **Create Act configuration files**:
    - From the [template repository](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main), you can copy the required Act configuration files:
      - `.actrc`
      - `.github/act/.input`
@@ -43,7 +47,7 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
      .github/act/.secret
      ```
 
-3. **Configure Inputs**:
+4. **Configure Inputs**:
    - The `.github/act/.input` file is configurable dependent on what elements of the workflow you want to run. Every field is optional and reflect the same steps that are invoked in the remote workflows. 
 
    | Input          | Values                | Description |
@@ -55,7 +59,7 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
    | run_deep_sast  | true \| false         | To run deep SAST scans or not. **Requires `plan` to be `true`**. |
    | plan           | true \| false         | To run the `terrform plan` step or not. |
 
-4. **Configure Secrets**:
+5. **Configure Secrets**:
    - Only the `GITHUB_TOKEN` is required for minimal workflow testing. The cloud service provider credentials are required if you want to connect to the remote environment to run a plan and deep analysis.
    - Copy the `.github/act/.secret.template` file to `.github/act/.secret`.
    - Populate the `.github/act/.secret` file with the following values:
@@ -73,16 +77,16 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
 
    *Optional secrets, for if you want to connect to your remote environment.
 
-5. **Create local workflow**:
+6. **Create local workflow**:
    - From the template repository, you can copy the [local workflow configuration](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main/.github/workflows/local_workflow.yml) into your repository.
 
-6. **Open the folder in VS Code**:
+7. **Open the folder in VS Code**:
    - Open the command pallete (`View > Command Palette`) > and run `Dev Containers: Open Folder in Container`. Select the appropriate git repository parent folder which contains the `.devcontainer/devcontainer.json` configuration. 
 
-7. **Open a new terminal session**:
+8. **Open a new terminal session**:
    - Once the DevContainer has initialized, open a new terminal session within VS Code; `Terminal > New Terminal`. This will be a new terminal session within your Dev Container. 
 
-8. **Run the Workflow**:
+9. **Run the Workflow**:
    - Within your new terminal, execute the following command to run the workflow using Act:
      ```sh
      act -W .github/workflows/local_workflow.yml
