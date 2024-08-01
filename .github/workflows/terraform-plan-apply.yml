@@ -138,7 +138,7 @@ jobs:
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          SSH_DEPLOY_KEY: "{{ secrets.SSH_DEPLOY_KEY}}"
+          SSH_DEPLOY_KEY: "${{ secrets.SSH_DEPLOY_KEY}}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
           if [ -n "$SSH_DEPLOY_KEY" ]; then
