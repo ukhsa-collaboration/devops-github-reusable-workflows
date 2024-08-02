@@ -9,6 +9,7 @@ on:
       environment: # Required for OIDC auth to Azure
         required: false
         default: Development
+        type: string
       aws_region:
         required: false
         default: eu-west-2

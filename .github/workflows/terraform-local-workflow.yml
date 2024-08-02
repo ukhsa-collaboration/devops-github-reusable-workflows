@@ -1,6 +1,6 @@
 name: "Local development workflow"
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       environment_name:
         required: false
