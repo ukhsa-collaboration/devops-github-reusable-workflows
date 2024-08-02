@@ -34,6 +34,8 @@ on:
         required: false
       AZURE_CLIENT_ID:
         required: false
+      SSH_DEPLOY_KEY:
+        required: false
 
 jobs:
   check:
@@ -136,8 +138,15 @@ jobs:
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
+          SSH_DEPLOY_KEY: "${{ secrets.SSH_DEPLOY_KEY}}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
+          if [ -n "$SSH_DEPLOY_KEY" ]; then
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            eval $(ssh-agent -s)
+            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+          fi
           state_name=$(basename "$DIRECTORY")
           terraform init \
             -backend-config=dynamodb_table="${AWS_REGION}"-state-locks \
