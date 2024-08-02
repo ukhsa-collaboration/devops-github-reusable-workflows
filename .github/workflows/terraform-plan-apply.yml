@@ -63,6 +63,7 @@ jobs:
   build:
     name: "Build Infrastructure - ${{ matrix.directory }}"
     runs-on: ubuntu-latest
+    environment: "${{ inputs.environment }}" # env context needs to be set for OIDC auth to Azure.
     defaults:
       run:
         shell: bash
