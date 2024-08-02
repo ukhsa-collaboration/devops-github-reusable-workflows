@@ -34,6 +34,10 @@ on:
         required: false
       AZURE_CLIENT_ID:
         required: false
+      AZURE_STORAGE_ACCOUNT_NAME:
+        required: false
+      AZURE_RESOURCE_GROUP_NAME:
+        required: false
 
 jobs:
   check:
@@ -145,18 +149,20 @@ jobs:
             -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
 
       - name: Terraform Init with Azure Backend
-        working-directory: "${{ matrix.directory }}"
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
+        working-directory: "${{ matrix.directory }}"
         env:
-          AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
-          # TODO: Update this to actually init with Azure backend
-          echo :x: Using an Azure backend is not currently supported! >> $GITHUB_SUMMARY
-          exit 1
+          state_name=$(basename "$DIRECTORY")
+          container_name=$(dirname "$DIRECTORY")
+          terraform init \
+            -backend-config="storage_account_name=${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}" \
+            -backend-config="container_name=$container_name" \
+            -backend-config="key=${state_name}.tfstate" \
+            -backend-config="resource_group_name=${{ secrets.AZURE_RESOURCE_GROUP_NAME }}" \
+            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
       - name: Find Terraform variables
         id: variables
