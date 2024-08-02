@@ -6,6 +6,9 @@ on:
         required: false
         default: dev
         type: string
+      environment: # Required for OIDC auth to Azure
+        required: false
+        default: Development
       aws_region:
         required: false
         default: eu-west-2
@@ -89,6 +92,7 @@ jobs:
 
       - name: Configure Azure Credentials
         uses: azure/login@v2
+        environment: "${{ inputs.environment }}"
         env:
           AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
