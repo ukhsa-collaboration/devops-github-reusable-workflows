@@ -1,4 +1,4 @@
-name: "Local development workflow"
+name: "Local IaC development workflow"
 on:
   workflow_dispatch:
     inputs:
@@ -29,7 +29,7 @@ on:
         required: false
         type: string
     secrets:
-      GITHUB_TOKEN:
+      GITHUB_PAT:
         required: true
       AWS_ACCESS_KEY_ID:
         required: false
@@ -76,7 +76,7 @@ jobs:
         if: ${{ inputs.run_light_sast == 'true' }}
         uses: ukhsa-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
 
   define_matrix:
     name: Define directory matrix
@@ -94,7 +94,7 @@ jobs:
           ukhsa-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
         id: directories
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
       
       - name: Filter directories based on the set stack
         id: filter_directories
@@ -196,7 +196,7 @@ jobs:
         id: terraform_version
         with:
           tf_file: "${{ matrix.directory }}/terraform.tf"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -304,4 +304,4 @@ jobs:
           scan_type: deep
           tfplan_file: "${{ matrix.directory }}/tfplan.json"
           scan_directory: "${{ matrix.directory }}"        
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
