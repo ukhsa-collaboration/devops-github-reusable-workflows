@@ -236,4 +236,4 @@ jobs:
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
-        run: terraform apply -no-color -input=false tfplan
+        run: # terraform apply -no-color -input=false tfplan
