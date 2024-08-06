@@ -45,8 +45,6 @@ on:
         required: false
       AZURE_CLIENT_ID:
         required: false
-      AZURE_STORAGE_ACCOUNT_NAME:
-        required: false
       AZURE_RESOURCE_GROUP_NAME:
         required: false
 
@@ -164,14 +162,13 @@ jobs:
 
       - name: Configure Azure Credentials
         uses: azure/login@v2
-        if: >-
-          ${{ env.AZURE_CLIENT_ID != '' && 
-          env.AZURE_TENANT_ID != '' &&
-          env.AZURE_SUBSCRIPTION_ID != '' }}
         env:
           AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        if: >-
+          ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' &&
+          env.AZURE_SUBSCRIPTION_ID != '' }}
         with:
           client-id: "${{ env.AZURE_CLIENT_ID }}"
           tenant-id: "${{ env.AZURE_TENANT_ID }}"
@@ -229,21 +226,21 @@ jobs:
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
         working-directory: "${{ matrix.directory }}"
         env:
-          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          ARM_CLIENT_SECRET: "${{ secrets.AZURE_CLIENT_SECRET }}"
-          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           state_name=$(basename "$DIRECTORY")
           container_name=$(dirname "$DIRECTORY")
+          storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
           terraform init \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}" \
-            -backend-config="container_name=$container_name" \
-            -backend-config="key=${ENVIRONMENT_NAME}/${state_name}/terraform.tfstate" \
-            -backend-config="resource_group_name=${{ secrets.AZURE_RESOURCE_GROUP_NAME }}" \
-            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+            -backend-config=storage_account_name="${storage_account_name}" \
+            -backend-config=container_name="$container_name" \
+            -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate \
+            -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
 
       - name: Find Terraform variables
         id: variables
@@ -285,6 +282,10 @@ jobs:
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
 
