@@ -76,3 +76,12 @@ jobs:
             | Terraform Format   |  ${{ env.tf_fmt }}  |
             | Terraform Linting  |  ${{ env.tf_lint }} |
             | Checkov Scan       |  ${{ env.tf_scan }} |
+
+      - name: End of Workflow
+        if: always()
+        run: |
+          if [[ ${{ env.job_status }} == 'success' ]]; then
+            exit 0
+          else
+            exit 1
+          fi
