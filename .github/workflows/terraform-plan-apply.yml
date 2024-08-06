@@ -38,9 +38,9 @@ on:
         required: false
 
 jobs:
-  # check:
-  #   name: Lint and SAST Scan Terraform code
-  #   uses: ./.github/workflows/terraform-code-check.yml
+  check:
+    name: Lint and SAST Scan Terraform code
+    uses: ./.github/workflows/terraform-code-check.yml
 
   define_matrix:
     name: Define directory matrix
@@ -63,7 +63,7 @@ jobs:
         shell: bash
     needs:
       - define_matrix
-      # - check
+      - check
     strategy:
       matrix:
         directory: "${{ fromJSON(needs.define_matrix.outputs.directories) }}"
