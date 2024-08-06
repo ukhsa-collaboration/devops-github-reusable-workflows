@@ -78,6 +78,7 @@ jobs:
             | Checkov Scan       |  ${{ env.tf_scan }} |
 
       - name: End of Workflow
+        shell: bash
         if: always()
         run: |
           if [[ ${{ env.job_status }} == 'success' ]]; then
