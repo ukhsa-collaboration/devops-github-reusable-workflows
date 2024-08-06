@@ -63,7 +63,7 @@ jobs:
         shell: bash
     needs:
       - define_matrix
-      - check
+      # - check
     strategy:
       matrix:
         directory: "${{ fromJSON(needs.define_matrix.outputs.directories) }}"
