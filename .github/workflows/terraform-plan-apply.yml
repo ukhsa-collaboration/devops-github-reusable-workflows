@@ -6,10 +6,6 @@ on:
         required: false
         default: dev
         type: string
-      environment: # Required for OIDC auth to Azure
-        required: false
-        default: Development
-        type: string
       aws_region:
         required: false
         default: eu-west-2
@@ -61,7 +57,7 @@ jobs:
   build:
     name: "Build Infrastructure - ${{ matrix.directory }}"
     runs-on: ubuntu-latest
-    environment: "${{ inputs.environment }}" # env context needs to be set for OIDC auth to Azure.
+    environment: "${{ inputs.environment_name }}" # env context needs to be set for OIDC auth to Azure.
     defaults:
       run:
         shell: bash
@@ -164,8 +160,9 @@ jobs:
         run: |
           state_name=$(basename "$DIRECTORY")
           container_name=$(dirname "$DIRECTORY")
+          storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
           terraform init \
-            -backend-config=storage_account_name="${{ secrets.AZURE_SUBSCRIPTION_ID }}"state \
+            -backend-config=storage_account_name="${storage_account_name}" \
             -backend-config=container_name="$container_name" \
             -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate \
             -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
