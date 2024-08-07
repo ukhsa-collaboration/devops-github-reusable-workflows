@@ -18,15 +18,25 @@ on:
         required: false
         type: boolean
         default: false
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
 
     secrets:
-      AWS_ACCESS_KEY_ID:
-        required: false
-      AWS_SECRET_ACCESS_KEY:
+      AWS_ROLE_NAME:
         required: false
       AWS_ACCOUNT_ID:
         required: false
-      AWS_ROLE_NAME:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
         required: false
       AZURE_SUBSCRIPTION_ID:
         required: false
@@ -49,6 +59,10 @@ jobs:
       directories: "${{ steps.directories.outputs.json_directory_list }}"
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
           UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
@@ -70,6 +84,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -78,12 +96,12 @@ jobs:
           AWS_SECRET_ACCESS_KEY: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_ROLE_NAME: "${{ secrets.AWS_ROLE_NAME }}"
-        if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && env.AWS_ACCESS_KEY_ID != '' }}
+        if: ${{ env.AWS_ROLE_NAME != '' && env.AWS_ACCOUNT_ID != '' }}
         with:
           aws-region: "${{ inputs.aws_region }}"
+          role-to-assume: "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}"
           aws-access-key-id: "${{ env.AWS_ACCESS_KEY_ID }}"
           aws-secret-access-key: "${{ env.AWS_SECRET_ACCESS_KEY }}"
-          role-to-assume: "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}"
 
       - name: Configure Azure Credentials
         uses: azure/login@v2
