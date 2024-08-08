@@ -44,6 +44,8 @@ on:
         required: false
       AZURE_CLIENT_ID:
         required: false
+      AZURE_RESOURCE_GROUP_NAME:
+        required: false
       SSH_DEPLOY_KEY:
         required: false
 
@@ -71,6 +73,7 @@ jobs:
   build:
     name: "Build Infrastructure - ${{ matrix.directory }}"
     runs-on: ubuntu-latest
+    environment: "${{ inputs.environment_name }}"
     defaults:
       run:
         shell: bash
@@ -172,18 +175,24 @@ jobs:
             -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
 
       - name: Terraform Init with Azure Backend
-        working-directory: "${{ matrix.directory }}"
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
+        working-directory: "${{ matrix.directory }}"
         env:
-          AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
-          # TODO: Update this to actually init with Azure backend
-          echo :x: Using an Azure backend is not currently supported! >> $GITHUB_SUMMARY
-          exit 1
+          state_name=$(basename "$DIRECTORY")
+          container_name=$(dirname "$DIRECTORY")
+          storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
+          terraform init \
+            -backend-config=storage_account_name="${storage_account_name}" \
+            -backend-config=container_name="$container_name" \
+            -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate \
+            -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
 
       - name: Find Terraform variables
         id: variables
@@ -225,6 +234,10 @@ jobs:
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
           terraform show -json tfplan | jq > tfplan.json
@@ -252,4 +265,8 @@ jobs:
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: terraform apply -no-color -input=false tfplan

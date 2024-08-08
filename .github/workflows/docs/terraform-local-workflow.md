@@ -60,13 +60,13 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
    | plan           | true \| false         | To run the `terrform plan` step or not. |
 
 5. **Configure Secrets**:
-   - Only the `GITHUB_TOKEN` is required for minimal workflow testing. The cloud service provider credentials are required if you want to connect to the remote environment to run a plan and deep analysis.
+   - Only the `GITHUB_PAT` is required for minimal workflow testing. The cloud service provider credentials are required if you want to connect to the remote environment to run a plan and deep analysis.
    - Copy the `.github/act/.secret.template` file to `.github/act/.secret`.
    - Populate the `.github/act/.secret` file with the following values:
 
    | Secret                | Values                     | Description |
    |-----------------------|----------------------------|-------------|
-   | GITHUB_TOKEN           | Your GitHub PAT           | This is a mandatory secret as dependent repositories are private. |
+   | GITHUB_PAT           | Your GitHub PAT           | This is a mandatory secret as dependent repositories are private. |
    | AWS_ACCESS_KEY_ID*     | Your AWS Access Key       | The AWS Access Key for your personal IAM user. |
    | AWS_SECRET_ACCESS_KEY* | Your AWS Secret Key       | The associated AWS Secret Key for your personal IAM user. |
    | AWS_ACCOUNT_ID*        | The AWS account ID        | The account that you want to deploy / plan against. This contains the statefile bucket and the resources. |
@@ -78,7 +78,7 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
    *Optional secrets, for if you want to connect to your remote environment.
 
 6. **Create local workflow**:
-   - From the template repository, you can copy the [local workflow configuration](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main/.github/workflows/local_workflow.yml) into your repository.
+   - From the template repository, you can copy the [local workflow configuration](https://github.com/UKHSA-Internal/devops-terraform-template/blob/main/.github/workflows/local_terraform_workflow.yml) into your repository.
 
 7. **Open the folder in VS Code**:
    - Open the command pallete (`View > Command Palette`) > and run `Dev Containers: Open Folder in Container`. Select the appropriate git repository parent folder which contains the `.devcontainer/devcontainer.json` configuration. 
@@ -89,7 +89,7 @@ Follow these steps to set up and run the [local workflow](terraform-local-workfl
 9. **Run the Workflow**:
    - Within your new terminal, execute the following command to run the workflow using Act:
      ```sh
-     act -W .github/workflows/local_workflow.yml
+     act -W .github/workflows/local_terraform_workflow.yml
      ```
 
 ### If you're running into difficulties, reset and try again!

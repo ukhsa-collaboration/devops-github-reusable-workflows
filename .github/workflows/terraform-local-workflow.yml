@@ -1,6 +1,6 @@
-name: "Local development workflow"
+name: "Local IaC development workflow"
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       environment_name:
         required: false
@@ -29,7 +29,7 @@ on:
         required: false
         type: string
     secrets:
-      GITHUB_TOKEN:
+      GITHUB_PAT:
         required: true
       AWS_ACCESS_KEY_ID:
         required: false
@@ -44,6 +44,8 @@ on:
       AZURE_TENANT_ID:
         required: false
       AZURE_CLIENT_ID:
+        required: false
+      AZURE_RESOURCE_GROUP_NAME:
         required: false
 
 jobs:
@@ -72,7 +74,7 @@ jobs:
         if: ${{ inputs.run_light_sast == 'true' }}
         uses: ukhsa-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
 
   define_matrix:
     name: Define directory matrix
@@ -90,7 +92,7 @@ jobs:
           ukhsa-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
         id: directories
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
       
       - name: Filter directories based on the set stack
         id: filter_directories
@@ -160,14 +162,13 @@ jobs:
 
       - name: Configure Azure Credentials
         uses: azure/login@v2
-        if: >-
-          ${{ env.AZURE_CLIENT_ID != '' && 
-          env.AZURE_TENANT_ID != '' &&
-          env.AZURE_SUBSCRIPTION_ID != '' }}
         env:
           AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        if: >-
+          ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' &&
+          env.AZURE_SUBSCRIPTION_ID != '' }}
         with:
           client-id: "${{ env.AZURE_CLIENT_ID }}"
           tenant-id: "${{ env.AZURE_TENANT_ID }}"
@@ -192,7 +193,7 @@ jobs:
         id: terraform_version
         with:
           tf_file: "${{ matrix.directory }}/terraform.tf"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -225,15 +226,21 @@ jobs:
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
         working-directory: "${{ matrix.directory }}"
         env:
-          AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
-          # TODO: Update this to actually init with Azure backend
-          echo :x: Using an Azure backend is not currently supported! >> $GITHUB_SUMMARY
-          exit 1
+          state_name=$(basename "$DIRECTORY")
+          container_name=$(dirname "$DIRECTORY")
+          storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
+          terraform init \
+            -backend-config=storage_account_name="${storage_account_name}" \
+            -backend-config=container_name="$container_name" \
+            -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate \
+            -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
 
       - name: Find Terraform variables
         id: variables
@@ -275,6 +282,10 @@ jobs:
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
 
@@ -294,4 +305,4 @@ jobs:
           scan_type: deep
           tfplan_file: "${{ matrix.directory }}/tfplan.json"
           scan_directory: "${{ matrix.directory }}"        
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_PAT }}
