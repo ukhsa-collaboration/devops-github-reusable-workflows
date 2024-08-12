@@ -1,4 +1,4 @@
-name: "[CI] Deploy Terraform stacks"
+name: "[CI] Destroy Terraform stacks"
 on:
   workflow_call:
     inputs:
@@ -10,18 +10,6 @@ on:
         required: false
         default: eu-west-2
         type: string
-      destructive_action_check:
-        required: false
-        type: boolean
-        default: false
-      checkov_deep_scan:
-        required: false
-        type: boolean
-        default: false
-      destroy_before_apply:
-        required: false
-        type: boolean
-        default: false
       repo:
         required: false
         type: string
@@ -50,34 +38,12 @@ on:
         required: false
       AZURE_RESOURCE_GROUP_NAME:
         required: false
-      TF_MODULES_SSH_DEPLOY_KEY:
-        required: false
-        description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
-      REPO_SSH_DEPLOY_KEY:
-        required: false
-        description: "The SSH key used to checkout private remote repos"
       SSH_DEPLOY_KEY:
         required: false
-        description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
-        
+
 jobs:
-  check:
-    name: Lint and SAST Scan Terraform code
-    uses: ./.github/workflows/terraform-code-check.yml
-
-  destroy:
-    name: Destroy existing infrastructure
-    if: ${{ inputs.destroy_before_apply }}
-    uses: ./.github/workflows/terraform-destroy.yml
-    with:
-      environment_name: ${{ inputs.environment_name }}
-      aws_region: ${{ inputs.aws_region }}
-      repo: ${{ inputs.repo }}
-      ref:  ${{ inputs.ref }}
-    secrets: inherit
-
   define_matrix:
-    name: Define directory matrix for build
+    name: Define directory matrix for destroy
     runs-on: ubuntu-latest
     outputs:
       directories: "${{ steps.directories.outputs.json_directory_list }}"
@@ -86,24 +52,23 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
-          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+          ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
           UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
         id: directories
+        with:
+          reverse: true
 
-  build:
-    name: "Build Infrastructure - ${{ matrix.directory }}"
+  destroy:
+    name: "Destroy Infrastructure - ${{ matrix.directory }}"
     runs-on: ubuntu-latest
     environment: "${{ inputs.environment_name }}"
-    if: always() && (needs.destroy.result == 'skipped' || needs.destroy.result == 'success')
     defaults:
       run:
         shell: bash
     needs:
       - define_matrix
-      - check
-      - destroy
     strategy:
       matrix:
         directory: "${{ fromJSON(needs.define_matrix.outputs.directories) }}"
@@ -114,7 +79,7 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
-          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+          ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -183,7 +148,7 @@ jobs:
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
+          SSH_DEPLOY_KEY: "${{ secrets.SSH_DEPLOY_KEY}}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
           if [ -n "$SSH_DEPLOY_KEY" ]; then
@@ -207,15 +172,8 @@ jobs:
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
-          if [ -n "$SSH_DEPLOY_KEY" ]; then
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-            eval $(ssh-agent -s)
-            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
-          fi
           state_name=$(basename "$DIRECTORY")
           container_name=$(dirname "$DIRECTORY")
           storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
@@ -259,7 +217,7 @@ jobs:
           full_variable_flags="$global_vars_file $app_var_file $env_var_file"
 
           echo "tf_vars=$full_variable_flags" >> $GITHUB_OUTPUT
-
+        
       - name: Terraform Plan
         working-directory: "${{ matrix.directory }}"
         env:
@@ -270,28 +228,9 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
-          terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
-          terraform show -json tfplan | jq > tfplan.json
+          terraform plan -destroy -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
 
-      - name: SAST Scanning with Checkov (Deep)
-        if: ${{ inputs.checkov_deep_scan }}
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
-        with:
-          scan_type: deep
-          tfplan_file: "${{ matrix.directory }}/tfplan.json"
-          scan_directory: "${{ matrix.directory }}"
-
-      - name: Terraform Destructive Actions Check
-        working-directory: "${{ matrix.directory }}"
-        if: ${{ inputs.destructive_action_check }}
-        run: |
-          delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
-
-          if [[ "$delete_count" -gt "0" ]]; then
-            echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_SUMMARY
-          fi
-
-      - name: Terraform Apply
+      - name: Terraform Destroy
         working-directory: "${{ matrix.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
