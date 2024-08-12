@@ -24,6 +24,6 @@ jobs:
       checks: write
       id-token: write   
     secrets:
-      SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      REPO_SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
       AWS_ACCOUNT_ID: ${{ secrets.TEST_AWS_ACCOUNT_ID }}
       AWS_ROLE_NAME: ${{ secrets.TEST_AWS_ROLE_NAME }}
