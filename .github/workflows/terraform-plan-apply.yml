@@ -313,6 +313,7 @@ jobs:
 
       - name: ZAP Scan on Deployed Application
         uses: zaproxy/action-full-scan@v0.10.0
+        working-directory: "${{ matrix.directory }}"
         if: ${{ steps.outputs.outputs.zap_endpoint != '' }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
