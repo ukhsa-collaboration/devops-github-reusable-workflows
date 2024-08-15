@@ -305,7 +305,7 @@ jobs:
       - name: Extract outputs from Terraform
         id: outputs
         run: |
-          if [[ terraform output -raw zap_test_endpoint ]]; then
+          if terraform output -raw zap_test_endpoint; then
             echo zap_endpoint=$(terraform output -raw zap_test_endpoint) >> $GITHUB_OUTPUT
           fi
 
