@@ -305,7 +305,9 @@ jobs:
       - name: Extract outputs from Terraform
         id: outputs
         run: |
-          echo zap_endpoint=$(terraform output -raw zap_test_endpoint) >> $GITHUB_OUTPUT
+          if [[ terraform output -raw zap_test_endpoint ]]; then
+            echo zap_endpoint=$(terraform output -raw zap_test_endpoint) >> $GITHUB_OUTPUT
+          fi
 
       - name: Post Deploy ZAP Scan
         uses: zaproxy/action-full-scan@v0.10.0
