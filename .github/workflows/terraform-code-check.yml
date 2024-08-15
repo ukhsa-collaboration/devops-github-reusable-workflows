@@ -1,9 +1,59 @@
 name: "[Analysis] Check Terraform Code"
 on:
   workflow_call:
+    inputs:
+      tflint_module_scan:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      TF_MODULES_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
 
 jobs:
-  check:
+  define_matrix:
+    name: Define directory matrix for build
+    if: ${{ inputs.tflint_module_scan == true }}
+    runs-on: ubuntu-latest
+    outputs:
+      directories: "${{ steps.directories.outputs.json_directory_list }}"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine order to run Terraform stacks
+        uses: >-
+          UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
+        id: directories
+
+  stack-checks:
+    name: "Checks for ${{ matrix.directory }}"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
+    defaults:
+      run:
+        shell: bash
+    needs:
+      - define_matrix
+    strategy:
+      matrix:
+        directory: "${{ fromJSON(needs.define_matrix.outputs.directories) }}"
+      max-parallel: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Terraform Linting with tflint
+        id: tf_lint
+        continue-on-error: true
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@main
+        with:
+          scan_modules: 'true'
+          tf_directory: ${{ matrix.directory }}
+        env:
+          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY }}"
+
+  recursive-checks:
     name: Lint and Scan Terraform code
     runs-on: ubuntu-latest
     container:
@@ -34,7 +84,7 @@ jobs:
       - name: Terraform Linting with tflint
         id: tf_lint
         continue-on-error: true
-        run: tflint --recursive --disable-rule terraform_required_version --disable-rule terraform_required_providers
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@main
 
       - name: SAST Scan Terraform code
         id: tf_scan

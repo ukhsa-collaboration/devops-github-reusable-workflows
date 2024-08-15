@@ -68,7 +68,9 @@ jobs:
 
       - name: Terraform Linting with tflint
         if: ${{ inputs.run_tflint == 'true' }}
-        run: tflint --recursive --disable-rule terraform_required_version --disable-rule terraform_required_providers
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@main
+        with:
+          github-token: ${{ secrets.GITHUB_PAT }}
 
       - name: SAST Scanning with Checkov
         if: ${{ inputs.run_light_sast == 'true' }}
