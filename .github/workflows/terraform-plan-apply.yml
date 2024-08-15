@@ -301,3 +301,16 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: terraform apply -no-color -input=false tfplan
+
+      - name: Extract outputs from Terraform
+        id: outputs
+        run: |
+          echo zap_endpoint=$(terraform output -raw zap_test_endpoint) >> $GITHUB_OUTPUT
+
+      - name: Post Deploy ZAP Scan
+        uses: zaproxy/action-full-scan@v0.10.0
+        if: ${{ steps.outputs.outputs.zap_endpoint != '' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: ${{ steps.outputs.outputs.zap_endpoint }}
+
