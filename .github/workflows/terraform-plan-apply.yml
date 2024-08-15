@@ -305,11 +305,13 @@ jobs:
       - name: Extract outputs from Terraform
         id: outputs
         run: |
-          if terraform output -raw zap_test_endpoint; then
+          # Using -raw in the if statement would evaluate to true even if the output doesn't exist.
+          # See https://github.com/hashicorp/terraform/issues/25956
+          if terraform output -json zap_test_endpoint; then
             echo zap_endpoint=$(terraform output -raw zap_test_endpoint) >> $GITHUB_OUTPUT
           fi
 
-      - name: Post Deploy ZAP Scan
+      - name: ZAP Scan on Deployed Application
         uses: zaproxy/action-full-scan@v0.10.0
         if: ${{ steps.outputs.outputs.zap_endpoint != '' }}
         with:
