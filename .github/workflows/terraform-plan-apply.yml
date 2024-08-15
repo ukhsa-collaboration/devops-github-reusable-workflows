@@ -304,6 +304,7 @@ jobs:
 
       - name: Extract outputs from Terraform
         id: outputs
+        working-directory: "${{ matrix.directory }}"
         run: |
           # Using -raw in the if statement would evaluate to true even if the output doesn't exist.
           # See https://github.com/hashicorp/terraform/issues/25956
@@ -313,7 +314,6 @@ jobs:
 
       - name: ZAP Scan on Deployed Application
         uses: zaproxy/action-full-scan@v0.10.0
-        working-directory: "${{ matrix.directory }}"
         if: ${{ steps.outputs.outputs.zap_endpoint != '' }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
