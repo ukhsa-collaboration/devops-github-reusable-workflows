@@ -10,7 +10,7 @@ on:
       - .github/workflows/_test-terraform-plan-apply.yml
 
 jobs:
-  regression_test:
+  deploy_tf_stacks_regression_test:
     name: Test using devops-terraform-example-project@main
     uses: ./.github/workflows/terraform-plan-apply.yml
     with:
