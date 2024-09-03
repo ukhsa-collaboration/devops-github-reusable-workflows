@@ -1,5 +1,7 @@
 # Local Workflow with DevContainers and Act
 
+## ⚠️ **WARNING: The local workflow using Act is a work in progress and is subject to breaking changes**
+
 This guide explains how to set up and use DevContainers and Act for initiating a local GitHub Actions workflow.
 
 ## Prerequisites

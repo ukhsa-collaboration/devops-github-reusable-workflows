@@ -1,6 +1,6 @@
-name: "[WIP] Local IaC development workflow"
+name: "[Setup] Initialise and perform Terraform actions"
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       environment_name:
         required: false
@@ -10,34 +10,42 @@ on:
         required: false
         default: eu-west-2
         type: string
-      stack:
+      destructive_action_check:
+        required: false
+        type: boolean
+        default: false
+      tf_action:
         required: false
         type: string
-      run_formatting:
-        required: false
-        type: string
-      run_tflint:
-        required: false
-        type: string
-      run_light_sast:
-        required: false
-        type: string
-      run_deep_sast: # requires inputs.plan == 'true'.
-        required: false
-        type: string
-      plan: # requires AWS|Azure credentials to be configured.
-        required: false
-        type: string
-    secrets:
-      GITHUB_PAT:
+        default: "plan"
+      directories:
+        description: "The list of directories for the matrix"
         required: true
-      AWS_ACCESS_KEY_ID:
+        type: string
+      max_parallel:
+        description: "Maximum number of parallel jobs"
         required: false
-      AWS_SECRET_ACCESS_KEY:
+        type: number
+        default: 1
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+
+    secrets:
+      AWS_ROLE_NAME:
         required: false
       AWS_ACCOUNT_ID:
         required: false
-      AWS_ROLE_NAME:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
         required: false
       AZURE_SUBSCRIPTION_ID:
         required: false
@@ -47,120 +55,49 @@ on:
         required: false
       AZURE_RESOURCE_GROUP_NAME:
         required: false
-
+      TF_MODULES_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
+      REPO_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to checkout private remote repos"
+      SSH_DEPLOY_KEY:
+        required: false
+        description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
+        
 jobs:
-  check-all-stacks:
-    name: Format, Lint and SAST Scan Terraform code
+  initialise:
+    name: "Initialise and run Terraform for - ${{ matrix.directory }}"
     runs-on: ubuntu-latest
-    if: >-
-        ${{ inputs.stack == '' &&
-        (inputs.run_formatting == 'true' ||
-         inputs.run_tflint == 'true' ||
-         inputs.run_light_sast == 'true' )}}
-    container:
-      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Terraform Formatting
-        if: ${{ inputs.run_formatting == 'true' }}
-        run: terraform fmt --recursive --check
-
-      - name: Terraform Linting with tflint
-        if: ${{ inputs.run_tflint == 'true' }}
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@main
-        with:
-          github-token: ${{ secrets.GITHUB_PAT }}
-
-      - name: SAST Scanning with Checkov
-        if: ${{ inputs.run_light_sast == 'true' }}
-        uses: ukhsa-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
-        with:
-          github-token: ${{ secrets.GITHUB_PAT }}
-
-  define_matrix:
-    name: Define directory matrix
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-22.04
-    if: ${{ inputs.plan == 'true' }}
-    outputs:
-      directories: "${{ steps.filter_directories.outputs.filtered_directories }}"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Determine order to run Terraform stacks
-        uses: >-
-          ukhsa-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
-        id: directories
-        with:
-          github-token: ${{ secrets.GITHUB_PAT }}
-      
-      - name: Filter directories based on the set stack
-        id: filter_directories
-        run: |
-          stack="${{ inputs.stack }}"
-          directories='${{ steps.directories.outputs.json_directory_list }}'
-
-          # Filter the directories based on the stack input
-          if [ -n "$stack" ]; then
-
-            filtered_directories=$(echo $directories | jq --arg stack "$stack" '[.[] | select(endswith($stack))]')
-            
-            # Check if the stack exists within directories
-            if [ "$(echo $filtered_directories | jq 'length')" -eq 0 ]; then
-              echo "No stack found for '$stack'. Exiting."
-              exit 1
-            fi
-
-          else
-            # If stack input is empty, continue with original ordered list of stacks.
-            filtered_directories=$directories
-          fi
-
-          # Ensure the output is in compact JSON format
-          filtered_directories=$(echo $filtered_directories | jq -c .)
-          echo "filtered_directories=$filtered_directories" >> $GITHUB_OUTPUT
-
-  build:
-    name: "Build Infrastructure - ${{ matrix.directory }}"
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-22.04
-    if: ${{ inputs.plan == 'true' }}
+    environment: "${{ inputs.environment_name }}"
     defaults:
       run:
         shell: bash
-    needs:
-      - define_matrix
     strategy:
       matrix:
-        directory: "${{ fromJSON(needs.define_matrix.outputs.directories) }}"
-      max-parallel: 1
+        directory: "${{ fromJSON(inputs.directories) }}"
+      max-parallel: ${{ inputs.max_parallel }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            ${{ matrix.directory }}
-            environment
-            globals.tf
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
-        if: >- 
-          ${{env.AWS_SECRET_ACCESS_KEY != '' && 
-          env.AWS_ACCESS_KEY_ID != '' }}
         env:
           AWS_ACCESS_KEY_ID: "${{ secrets.AWS_ACCESS_KEY_ID }}"
           AWS_SECRET_ACCESS_KEY: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_ROLE_NAME: "${{ secrets.AWS_ROLE_NAME }}"
+        if: ${{ env.AWS_ROLE_NAME != '' && env.AWS_ACCOUNT_ID != '' }}
         with:
           aws-region: "${{ inputs.aws_region }}"
+          role-to-assume: "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}"
           aws-access-key-id: "${{ env.AWS_ACCESS_KEY_ID }}"
           aws-secret-access-key: "${{ env.AWS_SECRET_ACCESS_KEY }}"
-          role-to-assume: "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}"
 
       - name: Configure Azure Credentials
         uses: azure/login@v2
@@ -191,11 +128,10 @@ jobs:
           done
 
       - name: Find Terraform version
-        uses: ukhsa-Internal/devops-github-actions/.github/actions/parse-terraform-version@main
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/parse-terraform-version@main
         id: terraform_version
         with:
           tf_file: "${{ matrix.directory }}/terraform.tf"
-          github-token: ${{ secrets.GITHUB_PAT }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -203,21 +139,28 @@ jobs:
           terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
 
       - name: Determine Backend Type
-        id: backend
         working-directory: "${{ matrix.directory }}"
+        id: backend
         run: |
           backend_type=$(grep -oP 'backend\s+"?\K[^"\s]+' ./backend.tf)
           echo "backend_type=$backend_type" >> $GITHUB_OUTPUT
 
       - name: Terraform Init with AWS S3 Backend
-        if: ${{ steps.backend.outputs.backend_type == 's3' }}
         working-directory: "${{ matrix.directory }}"
+        if: ${{ steps.backend.outputs.backend_type == 's3' }}
         env:
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
+          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
+          if [ -n "$SSH_DEPLOY_KEY" ]; then
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            eval $(ssh-agent -s)
+            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+          fi
           state_name=$(basename "$DIRECTORY")
           terraform init \
             -backend-config=dynamodb_table="${AWS_REGION}"-state-locks \
@@ -233,8 +176,15 @@ jobs:
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
+          if [ -n "$SSH_DEPLOY_KEY" ]; then
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            eval $(ssh-agent -s)
+            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+          fi
           state_name=$(basename "$DIRECTORY")
           container_name=$(dirname "$DIRECTORY")
           storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
@@ -290,21 +240,43 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
+          terraform show -json tfplan | jq > tfplan.json
 
-          if [ -s tfplan ]; then
-            terraform show -json tfplan | jq > tfplan.json
-          else
-            echo "No changes detected in the Terraform plan."
-            echo '{}' > tfplan.json
+          # Manipulate stack directory name to be compatible with the uploade and download actions.
+          dir_artifact_name=$(echo "${{ matrix.directory }}" | sed 's/\//_/g')
+          echo "dir_artifact_name=$dir_artifact_name" >> $GITHUB_ENV
+
+      - name: Upload Terraform plan to workflow
+        uses: actions/upload-artifact@v4
+        with: 
+          name: "${{ env.dir_artifact_name }}_tfplan"
+          path: "${{ matrix.directory }}/tfplan*"
+          compression-level: 1
+          retention-days: 1
+          overwrite: true
+          if-no-files-found: error
+
+      - name: Terraform Destructive Actions Check
+        working-directory: "${{ matrix.directory }}"
+        if: >-
+            ${{ inputs.destructive_action_check ||
+              inputs.environment_name == 'pre' || 
+              inputs.environment_name == 'prd' }}
+        run: |
+          delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
+
+          if [[ "$delete_count" -gt "0" ]]; then
+            echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_SUMMARY
           fi
 
-      - name: SAST Scanning with Checkov (Deep)
-        uses: ukhsa-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
-        if: >-
-          ${{ inputs.plan == 'true' &&
-          inputs.run_deep_sast == 'true' }}
-        with:
-          scan_type: deep
-          tfplan_file: "${{ matrix.directory }}/tfplan.json"
-          scan_directory: "${{ matrix.directory }}"        
-          github-token: ${{ secrets.GITHUB_PAT }}
+      - name: Terraform Apply
+        if: ${{ inputs.tf_action == 'apply' }} 
+        working-directory: "${{ matrix.directory }}"
+        env:
+          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
+          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+        run: terraform apply -no-color -input=false tfplan
