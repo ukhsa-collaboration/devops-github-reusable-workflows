@@ -186,7 +186,7 @@ jobs:
             echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
           fi
           state_name=$(basename "$DIRECTORY")
-          container_name=$(dirname "$DIRECTORY")
+          container_name=$(dirname "$DIRECTORY" | tr -cd '[:alnum:]-' | cut -c1-62)
           storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
           terraform init \
             -backend-config=storage_account_name="${storage_account_name}" \

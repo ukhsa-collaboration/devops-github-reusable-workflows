@@ -8,6 +8,8 @@ on:
     paths:
       - .github/workflows/terraform-plan-apply.yml
       - .github/workflows/_test-terraform-plan-apply.yml
+      - .github/workflows/terraform-core.yml
+      - .github/workflows/terraform-destroy.yml
 
 jobs:
   deploy_tf_stacks_regression_test:
