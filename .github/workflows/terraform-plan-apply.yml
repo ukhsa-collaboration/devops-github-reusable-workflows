@@ -21,7 +21,7 @@ on:
       tf_action:
         required: false
         type: string
-        default: "plan"
+        default: "apply"
       destroy_before_apply:
         required: false
         type: boolean
