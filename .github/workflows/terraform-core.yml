@@ -55,6 +55,9 @@ on:
         required: false
       AZURE_RESOURCE_GROUP_NAME:
         required: false
+      GH_TOKEN:
+        required: false
+        description: "Github Token used by Terraform to create and manage resources in Github"
       TF_MODULES_SSH_DEPLOY_KEY:
         required: false
         description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
@@ -238,6 +241,7 @@ jobs:
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
           terraform show -json tfplan | jq > tfplan.json
@@ -279,4 +283,5 @@ jobs:
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: terraform apply -no-color -input=false tfplan
