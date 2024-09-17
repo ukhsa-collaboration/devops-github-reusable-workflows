@@ -14,17 +14,23 @@ on:
         required: false
         type: boolean
         default: false
-      tf_action:
+      execute_terraform_plan:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether or not to apply the Terraform code. Set to false for a plan only."
+      terraform_action:
         required: false
         type: string
-        default: "plan"
+        default: "apply"
+        description: "Which Terraform action to run. 'apply' or 'destroy'"
       directories:
-        description: "The list of directories for the matrix"
+        description: "The list of Terraform stacks to run Terraform in"
         required: true
         type: string
       max_parallel:
-        description: "Maximum number of parallel jobs"
         required: false
+        description: "The maximum number of jobs to run at the same time. This should normally be 1 to avoid race conditions."
         type: number
         default: 1
       repo:
@@ -37,16 +43,30 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+      upload_plan:
+        required: false
+        type: boolean
+        default: false
+        description: "Create an artifact containing the resulting Terraform plan. Incompatible with download_existing_plan"
+      download_existing_plan:
+        required: false
+        type: boolean
+        default: false
+        description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
 
     secrets:
       AWS_ROLE_NAME:
         required: false
+        description: "The name of the role to assume when Terraform interacts with the AWS API."
       AWS_ACCOUNT_ID:
         required: false
+        description: "The AWS account ID where Terraform will create resources. This account must contain the role specified in AWS_ROLE_NAME."
       AWS_ACCESS_KEY_ID:
         required: false
+        description: "AWS credentials used by Terraform to interact with AWS API. Not required if using OIDC."
       AWS_SECRET_ACCESS_KEY:
         required: false
+        description: "AWS credentials used by Terraform to interact with AWS API. Not required if using OIDC."
       AZURE_SUBSCRIPTION_ID:
         required: false
       AZURE_TENANT_ID:
@@ -67,12 +87,11 @@ on:
       SSH_DEPLOY_KEY:
         required: false
         description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
-        
+
 jobs:
   initialise:
-    name: "Initialise and run Terraform for - ${{ matrix.directory }}"
+    name: "Initialise and run Terraform for ${{ matrix.directory }}"
     runs-on: ubuntu-latest
-    environment: "${{ inputs.environment_name }}"
     defaults:
       run:
         shell: bash
@@ -87,6 +106,9 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
+      - name: Export variables
+        run: echo "state_name=$(basename ${{ matrix.directory }})" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -124,7 +146,8 @@ jobs:
 
           for FILE in "${files_to_copy[@]}"; do
             if [[ ! -f "$DIRECTORY"/"$FILE" ]]; then
-                cp "$FILE" "$DIRECTORY"/
+                echo "NOTE - $(basename "$DIRECTORY") will attempt to use the "$FILE" file in the root directory"
+                cp "$FILE" "$DIRECTORY"/ || exit 1
             else
               echo "NOTE - $(basename "$DIRECTORY") has its own "$FILE" file. Not copying "$FILE" from root"
             fi
@@ -148,6 +171,19 @@ jobs:
           backend_type=$(grep -oP 'backend\s+"?\K[^"\s]+' ./backend.tf)
           echo "backend_type=$backend_type" >> $GITHUB_OUTPUT
 
+      - name: Add SSH deploy key to ssh-agent
+        env:
+          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
+        run: |
+          # Add SSH deploy key to ssh-agent to allow internal or private UKHSA-Internal
+          # modules to be downloaded during terraform init.
+          if [ -n "$SSH_DEPLOY_KEY" ]; then
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            eval $(ssh-agent -s)
+            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+          fi
+
       - name: Terraform Init with AWS S3 Backend
         working-directory: "${{ matrix.directory }}"
         if: ${{ steps.backend.outputs.backend_type == 's3' }}
@@ -155,16 +191,8 @@ jobs:
           AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
           DIRECTORY: "${{ matrix.directory }}"
         run: |
-          if [ -n "$SSH_DEPLOY_KEY" ]; then
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-            eval $(ssh-agent -s)
-            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
-          fi
-          state_name=$(basename "$DIRECTORY")
           terraform init \
             -backend-config=dynamodb_table="${AWS_REGION}"-state-locks \
             -backend-config=bucket="${AWS_ACCOUNT_ID}"-"${AWS_REGION}"-state \
@@ -179,16 +207,9 @@ jobs:
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
-          if [ -n "$SSH_DEPLOY_KEY" ]; then
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-            eval $(ssh-agent -s)
-            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
-          fi
-          state_name=$(basename "$DIRECTORY")
+          # Container name needs to be a valid DNS name with less than 63 characters.
           container_name=$(dirname "$DIRECTORY" | tr -cd '[:alnum:]-' | cut -c1-62)
           storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
           terraform init \
@@ -197,15 +218,34 @@ jobs:
             -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate \
             -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
 
+      - name: Check if the state file is empty
+        working-directory: "${{ matrix.directory }}"
+        id: state_empty
+        env:
+          execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
+        run: |
+          skip_workflow=false
+          if terraform state list | grep -q .; then
+            state_empty=false
+          else
+            state_empty=true
+            if [[ "$execute_terraform_plan" == "false" ]]; then
+              skip_workflow=true
+            fi
+          fi
+
+          echo "state_empty=$state_empty" >> $GITHUB_OUTPUT
+          echo "skip_workflow=$skip_workflow" >> $GITHUB_OUTPUT
+
       - name: Find Terraform variables
         id: variables
+        if: steps.state_empty.outputs.skip_workflow == 'false'
         env:
           DIRECTORY: "${{ matrix.directory }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
         run: |
           find_app_var_files() {
             local dir=$1
-            local state_name=$(basename "$dir")
             local tfvars="./$dir/tfvars/${state_name}-${ENVIRONMENT_NAME}.tfvars"
             local json="./$dir/tfvars/${state_name}-${ENVIRONMENT_NAME}.tfvars.json"
             if [[ -f "$tfvars" ]]; then
@@ -225,15 +265,33 @@ jobs:
             fi
           }
 
-          global_vars_file="-var-file=$(readlink -f globals.tfvars)"
+          find_global_var_file() {
+            local tfvars="globals.tfvars"
+            local json="globals.tfvars.json"
+            if [[ -f "$tfvars" ]]; then
+              echo "-var-file=$(readlink -f $tfvars)"
+            elif [[ -f "$json" ]]; then
+              echo "-var-file=$(readlink -f $json)"
+            fi
+          }
+
+          global_vars_file=$(find_global_var_file)
           app_var_file=$(find_app_var_files "$DIRECTORY")
           env_var_file=$(find_env_var_files)
           full_variable_flags="$global_vars_file $app_var_file $env_var_file"
 
           echo "tf_vars=$full_variable_flags" >> $GITHUB_OUTPUT
 
+      - uses: actions/download-artifact@v4
+        id: download_plan
+        if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.state_empty == 'false' )
+        with:
+          name: "tfplan-${{ env.state_name }}"
+          path: ${{ matrix.directory }}
+
       - name: Terraform Plan
         working-directory: "${{ matrix.directory }}"
+        if: steps.download_plan.conclusion == 'skipped' && steps.state_empty.outputs.skip_workflow == 'false' 
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
@@ -242,39 +300,42 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TERRAFORM_ACTION: ${{ inputs.terraform_action }}
         run: |
-          terraform plan -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
+          if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
+            terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
+          else
+            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
+          fi
           terraform show -json tfplan | jq > tfplan.json
 
-          # Manipulate stack directory name to be compatible with the uploade and download actions.
-          dir_artifact_name=$(echo "${{ matrix.directory }}" | sed 's/\//_/g')
-          echo "dir_artifact_name=$dir_artifact_name" >> $GITHUB_ENV
-
-      - name: Upload Terraform plan to workflow
+      - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
-        with: 
-          name: "${{ env.dir_artifact_name }}_tfplan"
-          path: "${{ matrix.directory }}/tfplan*"
+        if: inputs.upload_plan && steps.state_empty.outputs.skip_workflow == 'false'
+        with:
+          name: "tfplan-${{ env.state_name }}"
+          path: "${{ matrix.directory }}/tfplan"
+          if-no-files-found: error
           compression-level: 1
           retention-days: 1
-          overwrite: true
-          if-no-files-found: error
-
+  
       - name: Terraform Destructive Actions Check
         working-directory: "${{ matrix.directory }}"
         if: >-
-            ${{ inputs.destructive_action_check ||
-              inputs.environment_name == 'pre' || 
-              inputs.environment_name == 'prd' }}
+          ${{ ( inputs.destructive_action_check ||
+            inputs.environment_name == 'pre' || 
+            inputs.environment_name == 'prd' ) &&
+            inputs.terraform_action != 'destroy' &&
+            steps.state_empty.outputs.skip_workflow == 'false' }}
         run: |
           delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
 
           if [[ "$delete_count" -gt "0" ]]; then
-            echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_SUMMARY
+            echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Terraform Apply
-        if: ${{ inputs.tf_action == 'apply' }} 
+        if: inputs.execute_terraform_plan && steps.state_empty.outputs.skip_workflow == 'false'
         working-directory: "${{ matrix.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
@@ -283,5 +344,5 @@ jobs:
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: terraform apply -no-color -input=false tfplan
+          GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+        run: terraform apply -lock-timeout=5m -no-color -input=false tfplan

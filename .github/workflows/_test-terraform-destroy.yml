@@ -1,27 +1,24 @@
-name: "[Test] Deploy Terraform stacks"
-# Regression testing to try and catch and breaking changes
+name: "[Test] Destroy Terraform stacks"
+# Regression testing to try and catch and breaking changes. Will only run a destroy plan.
 
 on:
   pull_request:
     branches:
       - main
     paths:
-      - .github/workflows/terraform-plan-apply.yml
-      - .github/workflows/_test-terraform-plan-apply.yml
       - .github/workflows/terraform-core.yml
+      - .github/workflows/terraform-destroy.yml
 
 jobs:
-  deploy_tf_stacks_regression_test:
+  destroy_tf_stacks_regression_test:
     name: Test using devops-terraform-example-project@main
-    uses: ./.github/workflows/terraform-plan-apply.yml
+    uses: ./.github/workflows/terraform-destroy.yml
     with:
       repo: UKHSA-Internal/devops-terraform-example-project
       ref: "main"
-      checkov_deep_scan: true
-      execute_terraform_plan: true
+      execute_terraform_plan: false
     permissions:
       packages: read
-      actions: read
       contents: read
       security-events: write
       statuses: write

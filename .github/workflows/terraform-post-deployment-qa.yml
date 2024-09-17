@@ -48,7 +48,6 @@ on:
 jobs:
   cloud-configuration-scan:
     name: Run scans to check for cloud misconfigurations, DAST and threat model.
-    environment: "${{ inputs.environment_name }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

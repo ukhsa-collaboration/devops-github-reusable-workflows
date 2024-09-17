@@ -10,6 +10,10 @@ on:
         required: false
         default: eu-west-2
         type: string
+      execute_terraform_plan:
+        required: false
+        default: false
+        type: boolean
       repo:
         required: false
         type: string
@@ -38,9 +42,16 @@ on:
         required: false
       AZURE_RESOURCE_GROUP_NAME:
         required: false
+      TF_MODULES_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
+      REPO_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to checkout private remote repos"
       SSH_DEPLOY_KEY:
         required: false
-
+        description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
+        
 jobs:
   define_matrix:
     name: Define directory matrix for destroy
@@ -52,7 +63,7 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
-          ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
           UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
@@ -60,183 +71,17 @@ jobs:
         with:
           reverse: true
 
-  destroy:
-    name: "Destroy Infrastructure - ${{ matrix.directory }}"
-    runs-on: ubuntu-latest
-    environment: "${{ inputs.environment_name }}"
-    defaults:
-      run:
-        shell: bash
+  apply:
+    name: "Run Terraform (Destroy)"
+    uses: ./.github/workflows/terraform-core.yml
     needs:
       - define_matrix
-    strategy:
-      matrix:
-        directory: "${{ fromJSON(needs.define_matrix.outputs.directories) }}"
-      max-parallel: 1
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.repo }}
-          ref: ${{ inputs.ref }}
-          ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        env:
-          AWS_ACCESS_KEY_ID: "${{ secrets.AWS_ACCESS_KEY_ID }}"
-          AWS_SECRET_ACCESS_KEY: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
-          AWS_ROLE_NAME: "${{ secrets.AWS_ROLE_NAME }}"
-        if: ${{ env.AWS_ROLE_NAME != '' && env.AWS_ACCOUNT_ID != '' }}
-        with:
-          aws-region: "${{ inputs.aws_region }}"
-          role-to-assume: "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}"
-          aws-access-key-id: "${{ env.AWS_ACCESS_KEY_ID }}"
-          aws-secret-access-key: "${{ env.AWS_SECRET_ACCESS_KEY }}"
-
-      - name: Configure Azure Credentials
-        uses: azure/login@v2
-        env:
-          AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-        if: >-
-          ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' &&
-          env.AZURE_SUBSCRIPTION_ID != '' }}
-        with:
-          client-id: "${{ env.AZURE_CLIENT_ID }}"
-          tenant-id: "${{ env.AZURE_TENANT_ID }}"
-          subscription-id: "${{ env.AZURE_SUBSCRIPTION_ID }}"
-
-      - name: Copy required files from root directory
-        env:
-          DIRECTORY: "${{ matrix.directory }}"
-        run: |
-          files_to_copy=("providers.tf" "terraform.tf")
-
-          for FILE in "${files_to_copy[@]}"; do
-            if [[ ! -f "$DIRECTORY"/"$FILE" ]]; then
-                cp "$FILE" "$DIRECTORY"/
-            else
-              echo "NOTE - $(basename "$DIRECTORY") has its own "$FILE" file. Not copying "$FILE" from root"
-            fi
-          done
-
-      - name: Find Terraform version
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/parse-terraform-version@main
-        id: terraform_version
-        with:
-          tf_file: "${{ matrix.directory }}/terraform.tf"
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
-
-      - name: Determine Backend Type
-        working-directory: "${{ matrix.directory }}"
-        id: backend
-        run: |
-          backend_type=$(grep -oP 'backend\s+"?\K[^"\s]+' ./backend.tf)
-          echo "backend_type=$backend_type" >> $GITHUB_OUTPUT
-
-      - name: Terraform Init with AWS S3 Backend
-        working-directory: "${{ matrix.directory }}"
-        if: ${{ steps.backend.outputs.backend_type == 's3' }}
-        env:
-          AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
-          AWS_REGION: "${{ inputs.aws_region }}"
-          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          SSH_DEPLOY_KEY: "${{ secrets.SSH_DEPLOY_KEY}}"
-          DIRECTORY: "${{ matrix.directory }}"
-        run: |
-          if [ -n "$SSH_DEPLOY_KEY" ]; then
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-            eval $(ssh-agent -s)
-            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
-          fi
-          state_name=$(basename "$DIRECTORY")
-          terraform init \
-            -backend-config=dynamodb_table="${AWS_REGION}"-state-locks \
-            -backend-config=bucket="${AWS_ACCOUNT_ID}"-"${AWS_REGION}"-state \
-            -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
-
-      - name: Terraform Init with Azure Backend
-        if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
-        working-directory: "${{ matrix.directory }}"
-        env:
-          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          DIRECTORY: "${{ matrix.directory }}"
-          ARM_USE_OIDC: true
-          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-        run: |
-          state_name=$(basename "$DIRECTORY")
-          container_name=$(dirname "$DIRECTORY")
-          storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
-          terraform init \
-            -backend-config=storage_account_name="${storage_account_name}" \
-            -backend-config=container_name="$container_name" \
-            -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate \
-            -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
-
-      - name: Find Terraform variables
-        id: variables
-        env:
-          DIRECTORY: "${{ matrix.directory }}"
-          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-        run: |
-          find_app_var_files() {
-            local dir=$1
-            local state_name=$(basename "$dir")
-            local tfvars="./$dir/tfvars/${state_name}-${ENVIRONMENT_NAME}.tfvars"
-            local json="./$dir/tfvars/${state_name}-${ENVIRONMENT_NAME}.tfvars.json"
-            if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f $tfvars)"
-            elif [[ -f "$json" ]]; then
-              echo "-var-file=$(readlink -f $json)"
-            fi
-          }
-
-          find_env_var_files() {
-            local tfvars="./environment/${ENVIRONMENT_NAME}.tfvars"
-            local json="./environment/${ENVIRONMENT_NAME}.tfvars.json"
-            if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f $tfvars)"
-            elif [[ -f "$json" ]]; then
-              echo "-var-file=$(readlink -f $json)"
-            fi
-          }
-
-          global_vars_file="-var-file=$(readlink -f globals.tfvars)"
-          app_var_file=$(find_app_var_files "$DIRECTORY")
-          env_var_file=$(find_env_var_files)
-          full_variable_flags="$global_vars_file $app_var_file $env_var_file"
-
-          echo "tf_vars=$full_variable_flags" >> $GITHUB_OUTPUT
-        
-      - name: Terraform Plan
-        working-directory: "${{ matrix.directory }}"
-        env:
-          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
-          ARM_USE_OIDC: true
-          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-        run: |
-          terraform plan -destroy -no-color -input=false -out=tfplan -compact-warnings ${TERRAFORM_VARIABLES}
-
-      - name: Terraform Destroy
-        working-directory: "${{ matrix.directory }}"
-        env:
-          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
-          ARM_USE_OIDC: true
-          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-        run: terraform apply -no-color -input=false tfplan
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      aws_region: ${{ inputs.aws_region }}
+      repo: ${{ inputs.repo }}
+      ref:  ${{ inputs.ref }}
+      directories: "${{ needs.define_matrix.outputs.directories }}"
+      terraform_action: "destroy"
+      execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
+    secrets: inherit
