@@ -174,15 +174,18 @@ jobs:
       - name: Add SSH deploy key to ssh-agent
         env:
           SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
+          SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
         run: |
           # Add SSH deploy key to ssh-agent to allow internal or private UKHSA-Internal
           # modules to be downloaded during terraform init.
           if [ -n "$SSH_DEPLOY_KEY" ]; then
             mkdir -p ~/.ssh
             ssh-keyscan github.com >> ~/.ssh/known_hosts
-            eval $(ssh-agent -s)
+            eval $(ssh-agent -a $SSH_AUTH_SOCK -s)
             echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
           fi
+          
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
 
       - name: Terraform Init with AWS S3 Backend
         working-directory: "${{ matrix.directory }}"
