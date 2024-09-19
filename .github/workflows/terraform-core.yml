@@ -249,8 +249,9 @@ jobs:
         run: |
           find_app_var_files() {
             local dir=$1
-            local tfvars="./$dir/tfvars/${state_name}-${ENVIRONMENT_NAME}.tfvars"
-            local json="./$dir/tfvars/${state_name}-${ENVIRONMENT_NAME}.tfvars.json"
+            local tfvars=$(find ./$dir/tfvars/ -name "*${ENVIRONMENT_NAME}.tfvars" -print -quit)
+            local json=$(find ./$dir/tfvars/ -name "*${ENVIRONMENT_NAME}.tfvars.json" -print -quit)
+            
             if [[ -f "$tfvars" ]]; then
               echo "-var-file=$(readlink -f $tfvars)"
             elif [[ -f "$json" ]]; then
