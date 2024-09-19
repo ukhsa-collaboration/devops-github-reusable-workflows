@@ -222,6 +222,19 @@ jobs:
       download_existing_plan: true
     secrets: inherit
 
+  cost:
+    uses: ./.github/workflows/terraform-infra-cost.yml
+    strategy:
+      matrix:
+        directory: ${{ fromJSON(needs.define_matrix.outputs.directories) }}
+    needs:
+      - check
+      - define_matrix
+    with:
+      stack_root_directory: "${{ matrix.directory }}"
+    secrets:
+      INFRACOST_API_KEY: "foo"
+    
   # update-deployment:
   #   name: Update Github deployment
   #   if: always()

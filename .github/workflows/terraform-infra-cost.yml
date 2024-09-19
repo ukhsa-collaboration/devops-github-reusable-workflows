@@ -1,0 +1,96 @@
+name: "[Analysis] Terraform Cost Estimation with Infracost"
+# See https://github.com/marketplace/actions/infracost-actions for further examples
+
+on:
+  workflow_call:
+    inputs:
+      stack_root_directory:
+        required: true
+        description: "The root of the stack to run the Infracost check in"
+        type: string
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally uses default value."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code to compare against the merge target. Normally uses default value."
+    secrets:
+      TF_MODULES_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
+      REPO_SSH_DEPLOY_KEY:
+        required: false
+        description: "The SSH key used to checkout private remote repos"
+      INFRACOST_API_KEY:
+        required: true
+        description: "API key to access Infracost"
+
+jobs:
+  infracost:
+    name: Compare cost to main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
+      - name: Add SSH deploy key to ssh-agent
+        env:
+            SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY }}"
+            SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
+        run: |
+            if [ -n "$SSH_DEPLOY_KEY" ]; then
+                mkdir -p ~/.ssh
+                ssh-keyscan github.com >> ~/.ssh/known_hosts
+                eval $(ssh-agent -a $SSH_AUTH_SOCK -s)
+                echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+            fi
+        
+            echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+    
+  
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        continue-on-error: true
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate current Infracost
+        continue-on-error: true
+        env:
+          stack_root_directory: ${{ inputs.stack_root_directory }}
+        run: |
+          infracost breakdown --path=${stack_root_directory} \
+                              --format=json \
+                              --out-file=/tmp/infracost-base.json
+
+      - name: Checkout out PR branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
+      - name: Generate new Infracost
+        continue-on-error: true
+        run: |
+          infracost diff --path=${stack_root_directory} \
+                          --format=json \
+                          --compare-to=/tmp/infracost-base.json \
+                          --out-file=/tmp/infracost.json
+
+      - name: Post Infracost comment
+        continue-on-error: true
+        run: |
+          infracost comment github --path=/tmp/infracost.json \
+                                   --repo=$GITHUB_REPOSITORY \
+                                   --github-token=${{ secrets.GITHUB_TOKEN }} \
+                                   --pull-request=${{ github.event.pull_request.number }} \
+                                   --behavior=update
