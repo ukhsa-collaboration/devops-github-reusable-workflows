@@ -32,7 +32,12 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
-
+      service_prefix:
+        required: false
+        type: string
+        default: ""
+        description: "The prefix used to allow service multitenancy in a single AWS account. Not supported for Azure backends."
+  
     secrets:
       AWS_ROLE_NAME:
         required: false
@@ -109,6 +114,7 @@ jobs:
       execute_terraform_plan: false
       upload_plan: true
       download_existing_plan: false
+      service_prefix: ${{ inputs.service_prefix }}
     secrets: inherit
 
   approve:
@@ -152,6 +158,7 @@ jobs:
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
       upload_plan: false
       download_existing_plan: true
+      service_prefix: ${{ inputs.service_prefix }}
     secrets: inherit
 
   # update-deployment:

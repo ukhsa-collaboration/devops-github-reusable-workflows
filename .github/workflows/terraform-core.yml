@@ -53,6 +53,11 @@ on:
         type: boolean
         default: false
         description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
+      service_prefix:
+        required: false
+        type: string
+        default: ""
+        description: "The prefix used to allow service multitenancy in a single AWS account. Not supported for Azure backends."
 
     secrets:
       AWS_ROLE_NAME:
@@ -173,7 +178,7 @@ jobs:
 
       - name: Add SSH deploy key to ssh-agent
         env:
-          SSH_DEPLOY_KEY: "${{ secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}"
+          SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY != '' && secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}
           SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
         run: |
           # Add SSH deploy key to ssh-agent to allow internal or private UKHSA-Internal
@@ -195,11 +200,19 @@ jobs:
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
+          SERVICE_PREFIX: "${{ inputs.service_prefix }}"
         run: |
+          if [[ "${SERVICE_PREFIX}" != "" ]]; then
+            s3_key="${SERVICE_PREFIX}"/"${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
+          else
+            s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
+          fi
+          dynamodb_table=${SERVICE_PREFIX}${AWS_REGION}-state-locks
+          s3_bucket=${SERVICE_PREFIX}${AWS_ACCOUNT_ID}-${AWS_REGION}-state
           terraform init \
-            -backend-config=dynamodb_table="${AWS_REGION}"-state-locks \
-            -backend-config=bucket="${AWS_ACCOUNT_ID}"-"${AWS_REGION}"-state \
-            -backend-config=key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
+            -backend-config=dynamodb_table="${dynamodb_table}" \
+            -backend-config=bucket="${s3_bucket}" \
+            -backend-config=key="${s3_key}"
 
       - name: Terraform Init with Azure Backend
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
