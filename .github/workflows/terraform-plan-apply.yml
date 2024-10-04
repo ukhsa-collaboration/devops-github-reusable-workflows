@@ -68,7 +68,7 @@ on:
 jobs:
   define_matrix:
     name: Define directory matrix for build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       directories: "${{ steps.directories.outputs.json_directory_list }}"
     steps:
@@ -119,7 +119,7 @@ jobs:
 
   approve:
     name: Approve deployment
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment: ${{ inputs.environment_name }}
     if: ${{ inputs.execute_terraform_plan }}
     env:
