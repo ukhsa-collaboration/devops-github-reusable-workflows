@@ -29,7 +29,12 @@ on:
         type: string
         default: ""
         description: "The prefix used to allow service multitenancy in a single AWS account. Not supported for Azure backends."
-  
+      runner_label:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
+    
     secrets:
       AWS_ROLE_NAME:
         required: false
@@ -60,7 +65,7 @@ on:
 jobs:
   define_matrix:
     name: Define directory matrix for destroy
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_label }}
     outputs:
       directories: "${{ steps.directories.outputs.json_directory_list }}"
     steps:

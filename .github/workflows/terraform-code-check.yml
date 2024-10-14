@@ -25,6 +25,12 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+      runner_label:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
+    
     secrets:
       TF_MODULES_SSH_DEPLOY_KEY:
         required: false
@@ -36,7 +42,7 @@ on:
 jobs:
   recursive-checks:
     name: Lint and Scan Terraform code
-    runs-on: ubuntu-latest        
+    runs-on: ${{ inputs.runner_label }}
     container:
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
       # Volume is workaround for https://github.com/actions/runner/issues/716

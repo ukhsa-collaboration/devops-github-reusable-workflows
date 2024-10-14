@@ -37,6 +37,11 @@ on:
         type: string
         default: ""
         description: "The prefix used to allow service multitenancy in a single AWS account. Not supported for Azure backends."
+      runner_label:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
   
     secrets:
       AWS_ROLE_NAME:
@@ -115,6 +120,7 @@ jobs:
       upload_plan: true
       download_existing_plan: false
       service_prefix: ${{ inputs.service_prefix }}
+      runner_label: ${{ inputs.runner_label }}
     secrets: inherit
 
   approve:
@@ -159,6 +165,7 @@ jobs:
       upload_plan: false
       download_existing_plan: true
       service_prefix: ${{ inputs.service_prefix }}
+      runner_label: ${{ inputs.runner_label }}
     secrets: inherit
 
   # update-deployment:
@@ -188,4 +195,5 @@ jobs:
     needs: apply
     with:
       aws_region: ${{ inputs.aws_region }}
+      runner_label: ${{ inputs.runner_label }}
     secrets: inherit

@@ -10,6 +10,11 @@ on:
         required: false
         default: eu-west-2
         type: string
+      runner_label:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
       zap_api_scan:
         required: false
         type: boolean
@@ -48,7 +53,7 @@ on:
 jobs:
   cloud-configuration-scan:
     name: Run scans to check for cloud misconfigurations, DAST and threat model.
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_label }}
     steps:
       - uses: actions/checkout@v4
       - name: DAST - ZAP API workflow/action.

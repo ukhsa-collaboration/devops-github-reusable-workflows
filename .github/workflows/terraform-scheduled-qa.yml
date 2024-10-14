@@ -30,6 +30,12 @@ on:
         required: false
         type: boolean
         default: true
+      runner_label:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
+    
     secrets:
       AWS_ROLE_NAME:
         required: false
@@ -68,7 +74,7 @@ jobs:
   drift-detection:
     name: Checking for configuration differences between SCM and what's deployed.
     environment: "${{ inputs.environment_name }}"
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_label }}
     needs: sast-scan
     steps:
       - uses: actions/checkout@v4
