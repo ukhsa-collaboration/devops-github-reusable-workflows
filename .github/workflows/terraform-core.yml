@@ -245,6 +245,10 @@ jobs:
         id: state_empty
         env:
           execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           skip_workflow=false
           if terraform state list | grep -q .; then
