@@ -251,7 +251,7 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           skip_workflow=false
-          if terraform state list | grep -q .; then
+          if terraform state list; then
             state_empty=false
           else
             state_empty=true
