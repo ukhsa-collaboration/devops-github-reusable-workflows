@@ -15,6 +15,10 @@ on:
         type: boolean
         description: "Whether to download external modules when running Checkov scan"
         default: false
+      check_serverless:
+        required: false
+        type: boolean
+        description: "Include serverless framework scanning when running Checkov scan"
       repo:
         required: false
         type: string
@@ -100,6 +104,7 @@ jobs:
         with:
           scan_directory: ${{ inputs.stack_root_directory }}
           scan_type: "${{ inputs.checkov_deep_scan && 'deep' || 'light' }}"
+          check_serverless: ${{ inputs.check_serverless }}
 
       - name: Check step status
         shell: bash
