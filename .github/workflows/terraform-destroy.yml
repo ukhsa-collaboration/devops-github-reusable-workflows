@@ -24,11 +24,6 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
-      service_prefix:
-        required: false
-        type: string
-        default: ""
-        description: "The prefix used to allow service multitenancy in a single AWS account. Not supported for Azure backends."
       runner_label:
         required: false
         type: string
@@ -94,5 +89,4 @@ jobs:
       directories: "${{ needs.define_matrix.outputs.directories }}"
       terraform_action: "destroy"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
-      service_prefix: ${{ inputs.service_prefix }}
     secrets: inherit

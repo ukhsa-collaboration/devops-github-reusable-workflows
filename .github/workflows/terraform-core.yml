@@ -53,11 +53,6 @@ on:
         type: boolean
         default: false
         description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
-      service_prefix:
-        required: false
-        type: string
-        default: ""
-        description: "The prefix used to allow service multitenancy in a single AWS account. Not supported for Azure backends."
       runner_label:
         required: false
         type: string
@@ -206,15 +201,10 @@ jobs:
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.directory }}"
-          SERVICE_PREFIX: "${{ inputs.service_prefix }}"
         run: |
-          if [[ "${SERVICE_PREFIX}" != "" ]]; then
-            s3_key="${SERVICE_PREFIX}"/"${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
-          else
-            s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
-          fi
-          dynamodb_table=${SERVICE_PREFIX}${AWS_REGION}-state-locks
-          s3_bucket=${SERVICE_PREFIX}${AWS_ACCOUNT_ID}-${AWS_REGION}-state
+          s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
+          dynamodb_table=${AWS_REGION}-state-locks
+          s3_bucket=${AWS_ACCOUNT_ID}-${AWS_REGION}-state
           terraform init \
             -backend-config=dynamodb_table="${dynamodb_table}" \
             -backend-config=bucket="${s3_bucket}" \
