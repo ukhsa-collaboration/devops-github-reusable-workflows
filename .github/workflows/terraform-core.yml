@@ -243,6 +243,7 @@ jobs:
       - name: Check if the state file is empty
         working-directory: "${{ matrix.directory }}"
         id: state_empty
+        shell: bash
         env:
           execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
           ARM_USE_OIDC: true
@@ -251,7 +252,7 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           skip_workflow=false
-          if terraform state list; then
+          if [[ $(terraform state list | head -c1 | wc -c) -ne 0 ]]; then
             state_empty=false
           else
             state_empty=true
