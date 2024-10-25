@@ -165,7 +165,16 @@ jobs:
         with:
           tf_file: "${{ matrix.directory }}/terraform.tf"
 
-      - name: Set up Terraform
+      - name: Setup Terraform for self-hosted runner
+        if: ${{ inputs.runner_label == 'self-hosted' }}
+        run: |
+          echo "Terraform Version: ${{ steps.terraform_version.outputs.tf_version }}" 
+          tfenv use ${{ steps.terraform_version.outputs.tf_version }}
+          terraform --version
+        working-directory: ${{ matrix.directory }}
+
+      - name: Setup Terraform for GHE runner
+        if: ${{ inputs.runner_label != 'self-hosted' }}
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
@@ -332,7 +341,7 @@ jobs:
         if: inputs.upload_plan && steps.state_empty.outputs.skip_workflow == 'false'
         with:
           name: "tfplan-${{ env.state_name }}"
-          path: "${{ matrix.directory }}/tfplan"
+          path: "${{ matrix.directory }}/tfplan*"
           if-no-files-found: error
           compression-level: 1
           retention-days: 1

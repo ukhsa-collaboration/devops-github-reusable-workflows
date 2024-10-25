@@ -15,6 +15,15 @@ on:
         type: string
         default: "ubuntu-latest"
         description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
+      directories:
+        description: "The list of Terraform stacks to run Terraform in"
+        required: true
+        type: string
+      max_parallel:
+        required: false
+        description: "The maximum number of jobs to run at the same time."
+        type: number
+        default: 5
       zap_api_scan:
         required: false
         type: boolean
@@ -51,27 +60,54 @@ on:
         required: false
         
 jobs:
-  cloud-configuration-scan:
-    name: Run scans to check for cloud misconfigurations, DAST and threat model.
-    runs-on: ${{ inputs.runner_label }}
+  deep-sast-scan:
+    name: Run a deep SAST scan against Terraform code.
+    runs-on: "ubuntu-latest"
+    strategy:
+      matrix:
+        directory: "${{ fromJSON(inputs.directories) }}"
+      max-parallel: ${{ inputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
-      - name: DAST - ZAP API workflow/action.
-        if: ${{ inputs.zap_api_scan == true }}
-        run: |
-          echo "#TODO; Run ZAP API scan."
 
-      - name: DAST - ZAP baseline scan workflow/action.
-        if: ${{ inputs.zap_endpoint_scan == true }}
-        run: |
-          echo "#TODO; Run ZAP baseline scan against endpoints."
+      - name: Export variables
+        run: echo "state_name=$(basename ${{ matrix.directory }})" >> $GITHUB_ENV
 
-      - name: CSPM - Run Prowler workflow/action.
-        if: ${{ inputs.prowler_scan == true }}
-        run: |
-          echo "#TODO; Run Prowler."
+      - uses: actions/download-artifact@v4
+        id: download_plan
+        with:
+          name: "tfplan-${{ env.state_name }}"
+          path: ${{ matrix.directory }}
 
-      - name: Create threat model using Irius Risk workflow/action.
-        if: ${{ inputs.create_threat_model == true }}
-        run: |
-          echo "#TODO; Create master plan and run Irius Risk."
+      - name: Deep SAST Scan Terraform code
+        id: tf_scan
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
+        with:
+          scan_directory: ${{ matrix.directory }}
+          scan_type: "deep"
+          tfplan_file: "tfplan.json"
+
+  # cloud-configuration-scan:
+  #     name: Run scans to check for cloud misconfigurations, DAST and threat model.
+  #     runs-on: ${{ inputs.runner_label }}
+  #     steps:
+  #     - uses: actions/checkout@v4
+  #     - name: DAST - ZAP API workflow/action.
+  #       if: ${{ inputs.zap_api_scan == true }}
+  #       run: |
+  #         echo "#TODO; Run ZAP API scan."
+
+  #     - name: DAST - ZAP baseline scan workflow/action.
+  #       if: ${{ inputs.zap_endpoint_scan == true }}
+  #       run: |
+  #         echo "#TODO; Run ZAP baseline scan against endpoints."
+
+  #     - name: CSPM - Run Prowler workflow/action.
+  #       if: ${{ inputs.prowler_scan == true }}
+  #       run: |
+  #         echo "#TODO; Run Prowler."
+
+  #     - name: Create threat model using Irius Risk workflow/action.
+  #       if: ${{ inputs.create_threat_model == true }}
+  #       run: |
+  #         echo "#TODO; Create master plan and run Irius Risk."

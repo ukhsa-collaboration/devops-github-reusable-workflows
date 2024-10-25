@@ -77,7 +77,10 @@ jobs:
           tf_file: "${{ inputs.stack_root_directory }}/terraform.tf"
 
       - name: Use correct Terraform version
-        run: tfenv use ${{ steps.terraform_version.outputs.tf_version }}
+        run: |
+          echo "Terraform Version: ${{ steps.terraform_version.outputs.tf_version }}" 
+          tfenv use ${{ steps.terraform_version.outputs.tf_version }}
+          terraform --version
         working-directory: ${{ inputs.stack_root_directory }}
     
       - name: Terraform Formatting

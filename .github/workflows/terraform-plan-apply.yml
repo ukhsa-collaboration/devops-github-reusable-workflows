@@ -94,6 +94,7 @@ jobs:
       stack_root_directory: "${{ matrix.directory }}"
       repo: ${{ inputs.repo }}
       ref: ${{ inputs.ref }}
+      tflint_module_scan: ${{ inputs.tflint_module_scan }}
     secrets:
       REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
@@ -181,12 +182,13 @@ jobs:
   #           -f "state=success" \
   #           -f "description=Deployment finished successfully."
 
-
   post-deployment-qa-checks:
     name: Run post deployment QA checks.
     uses: ./.github/workflows/terraform-post-deployment-qa.yml
     needs: apply
     with:
+      environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
+      directories: "${{ needs.define_matrix.outputs.directories }}"
       runner_label: ${{ inputs.runner_label }}
     secrets: inherit
