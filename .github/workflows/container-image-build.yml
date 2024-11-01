@@ -61,5 +61,5 @@ jobs:
     needs:
       - build
     with:
-      artifact_url: ${{ needs.build.outputs.artifact_url }}
+      artifact_run_id: ${{ github.run_id }}
       image_name: ${{ inputs.image_name }}
