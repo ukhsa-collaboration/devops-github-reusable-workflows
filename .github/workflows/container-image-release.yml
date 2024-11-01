@@ -2,8 +2,8 @@ name: "Tag and Release image"
 on:
   workflow_call:
     inputs:
-      artifact_url:
-        description: "The Github Artifact containing the image to be released"
+      artifact_run_id:
+        description: "The run ID of the workflow that generated a container-image artifact"
         type: string
       aws_region:
         description: "The AWS region containing the ECR repo"
@@ -20,6 +20,7 @@ on:
         description: "IAM role to assume for pushing to ECR"
         type: string
         default: "active10-github-actions-role"
+      
 
 permissions:
   id-token: write
@@ -49,10 +50,11 @@ jobs:
             role-session-name: build-and-push-${{ github.sha }}
             aws-region: ${{ inputs.aws_region }}
 
-      - name: Download Artifact
-        run: |
-          curl -v -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o $GITHUB_WORKSPACE/container-image.zip "${{ inputs.artifact_url }}"
-          unzip $GITHUB_WORKSPACE/container-image.zip
+      - uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id }}
 
       - name: Login to Amazon ECR
         id: login-ecr
