@@ -51,7 +51,7 @@ jobs:
 
       - name: Download Artifact
         run: |
-          curl -I -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o $GITHUB_WORKSPACE/container-image.zip "${{ inputs.artifact_url }}"
+          curl -v -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o $GITHUB_WORKSPACE/container-image.zip "${{ inputs.artifact_url }}"
           unzip $GITHUB_WORKSPACE/container-image.zip
 
       - name: Login to Amazon ECR
