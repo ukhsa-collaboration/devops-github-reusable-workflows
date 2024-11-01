@@ -1,4 +1,4 @@
-name: "[Test] Skip Destroy Terraform stacks"
+name: "Test Destroy Terraform stacks"
 
 on:
   pull_request:
