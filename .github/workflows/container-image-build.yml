@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
     outputs:
-      artifact-url: 
+      artifact_url:
         value: ${{ jobs.build.outputs.artifact_url }}
 
 jobs:
@@ -55,9 +55,11 @@ jobs:
           path: /tmp/container-image.tar
           retention-days: 1
 
-      - name: Tag repo and push container
-        uses: ./.github/workflows/container-image-release.yml
-        if: inputs.release_after_build
-        with:
-          artifact_url: ${{ steps.upload.outputs.artifact-url }}
-          image_name: ${{ inputs.image_name }}
+  release:
+    uses: ./.github/workflows/container-image-release.yml
+    if: inputs.release_after_build
+    needs:
+      - build
+    with:
+      artifact_url: ${{ needs.build.outputs.artifact_url }}
+      image_name: ${{ inputs.image_name }}
