@@ -23,6 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       artifact_url: ${{ steps.upload.outputs.artifact-url }}
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -50,3 +54,10 @@ jobs:
           name: container-image
           path: /tmp/container-image.tar
           retention-days: 1
+
+      - name: Tag repo and push container
+        uses: ./.github/workflows/container-image-release.yml
+        if: inputs.release_after_build
+        with:
+          artifact_url: ${{ steps.upload.outputs.artifact-url }}
+          image_name: ${{ inputs.image_name }}
