@@ -1,0 +1,52 @@
+name: "Build, Test and Push Container Image"
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "The name of the image"
+        type: string
+      unit_tests_command:
+        description: "The command to run unit tests of the application"
+        type: string
+        default: echo docker run "$APP_NAME":latest pytest || exit 1
+      release_after_build:
+        description: "Whether or not to generate a tag and release after building the image"
+        type: boolean
+        default: false
+    outputs:
+      artifact-url: 
+        value: ${{ jobs.build.outputs.artifact_url }}
+
+jobs:
+  build:
+    name: Docker build image
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_url: ${{ steps.upload.outputs.artifact-url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: "container:latest"
+          load: true
+          outputs: type=docker,dest=/tmp/container-image.tar
+
+      - name: Unit tests
+        if: inputs.unit_tests_command != ''
+        run: |
+          ${{ inputs.unit_tests_command }}
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.release_after_build
+        id: upload
+        with:
+          name: container-image
+          path: /tmp/container-image.tar
+          retention-days: 1
