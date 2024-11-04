@@ -8,11 +8,29 @@ on:
       unit_tests_command:
         description: "The command to run unit tests of the application"
         type: string
-        default: echo docker run "$APP_NAME":latest pytest || exit 1
+        default: echo docker run container:latest pytest || exit 1
       release_after_build:
         description: "Whether or not to generate a tag and release after building the image"
         type: boolean
         default: false
+      dockerfile_path:
+        description: "Path of the Dockerfile"
+        type: string
+        default: "${{ inputs.docker_build_context}}/Dockerfile"
+      docker_build_context:
+        description: "The context of the Docker build command"
+        type: string
+        default: "."
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."  
     outputs:
       artifact_url:
         value: ${{ jobs.build.outputs.artifact_url }}
@@ -36,10 +54,11 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ inputs.docker_build_context }}
           push: false
           tags: "container:latest"
           load: true
+          file: ${{ inputs.dockerfile_path }}
           outputs: type=docker,dest=/tmp/container-image.tar
 
       - name: Unit tests
