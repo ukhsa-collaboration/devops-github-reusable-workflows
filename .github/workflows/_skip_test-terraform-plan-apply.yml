@@ -1,4 +1,4 @@
-name: "[Test] Skip Deploy Terraform stacks"
+name: "Test Deploy Terraform stacks"
 
 on:
   pull_request:

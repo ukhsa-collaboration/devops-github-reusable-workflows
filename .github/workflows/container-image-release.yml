@@ -12,15 +12,23 @@ on:
       ecr_aws_account_id:
         description: "The AWS account ID to push the ECR images to" 
         type: string
-        default: "636728427214"
       image_name:
         description: "The name of the container image" 
         type: string
       role_to_assume:
         description: "IAM role to assume for pushing to ECR"
         type: string
-        default: "active10-github-actions-role"
-      
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."  
+  
 
 permissions:
   id-token: write
