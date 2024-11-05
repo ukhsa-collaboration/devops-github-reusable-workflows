@@ -160,7 +160,7 @@ jobs:
           done
 
       - name: Find Terraform version
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@main
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.2.0
         id: terraform_version
         with:
           tf_file: "${{ matrix.directory }}/terraform.tf"
