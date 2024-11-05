@@ -15,7 +15,7 @@ jobs:
     name: Test using devops-terraform-example-project@main
     uses: ./.github/workflows/terraform-plan-apply.yml
     with:
-      repo: UKHSA-Internal/devops-terraform-example-project
+      repo: ukhsa-collaboration/devops-terraform-example-project
       ref: "main"
       execute_terraform_plan: true
     permissions:
