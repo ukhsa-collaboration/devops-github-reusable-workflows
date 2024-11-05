@@ -4,6 +4,7 @@ This repository contains several reusable GitHub Actions workflows. Below is an 
 
 ## Workflows
 
-1. [Local Development Workflow](docs/terraform-local-workflow.md)
-2. [Remote Light Check Workflow](docs/terraform-code-check.md)
-3. [Remote Full Check Workflow](docs/terraform-plan-apply.md)
+1. [Terraform Code Check](docs/terraform-code-check.md)
+2. [Terraform Plan Apply](docs/terraform-plan-apply.md)
+3. [Terraform Destroy](docs/terraform-destroy.md)
+4. [Terraform Core](docs/terraform-core.md)
