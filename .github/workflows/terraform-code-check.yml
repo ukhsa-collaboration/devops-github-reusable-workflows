@@ -44,7 +44,7 @@ jobs:
     name: Lint and Scan Terraform code
     runs-on: ${{ inputs.runner_label }}
     container:
-      image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
+      image: ghcr.io/ukhsa-collaboration/devops-terraform-ci:latest
       # Volume is workaround for https://github.com/actions/runner/issues/716
       volumes:
         - /home/runner/work/_actions/ukhsa-collaboration/devops-github-actions/:/home/runner/work/_actions/ukhsa-collaboration/devops-github-actions/
