@@ -1,11 +1,7 @@
 name: "[Analysis] Check Python Code"
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      branch:
-        description: 'Branch to run the workflow on'
-        required: true
-        default: 'feature/python-codecheck'       
       code_coverage_dir:
         required: true
         description: "The directory of coverage script file"
