@@ -1,0 +1,99 @@
+name: "Build, Test and Push Container Image"
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "The name of the image"
+        type: string
+      unit_tests_command:
+        description: "The command to run unit tests of the application"
+        type: string
+        default: echo docker run container:latest pytest || exit 1
+      release_after_build:
+        description: "Whether or not to generate a tag and release after building the image"
+        type: boolean
+        default: false
+      dockerfile:
+        description: "Name of the Dockerfile relative to the build context"
+        type: string
+        default: "Dockerfile"
+      docker_build_context:
+        description: "The context of the Docker build command"
+        type: string
+        default: "."
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."  
+    outputs:
+      artifact_url:
+        value: ${{ jobs.build.outputs.artifact_url }}
+    secrets:
+      AWS_ROLE_NAME:
+        required: false
+        description: "The name of the role used to push the image. Only used if `release_after_build` is true."
+      AWS_ACCOUNT_ID:
+        required: false
+        description: "The account ID hosting the ECR repository. Only used if `release_after_build` is true."
+  
+
+jobs:
+  build:
+    name: Docker build image
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_url: ${{ steps.upload.outputs.artifact-url }}
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.docker_build_context }}
+          push: false
+          tags: "container:latest"
+          load: true
+          file: "${{ inputs.docker_build_context }}/${{ inputs.dockerfile }}"
+          outputs: type=docker,dest=/tmp/container-image.tar
+
+      - name: Unit tests
+        if: inputs.unit_tests_command != ''
+        run: |
+          ${{ inputs.unit_tests_command }}
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.release_after_build
+        id: upload
+        with:
+          name: container-image
+          path: /tmp/container-image.tar
+          retention-days: 1
+
+  release:
+    uses: ./.github/workflows/container-image-release.yml
+    if: inputs.release_after_build
+    needs:
+      - build
+    with:
+      artifact_run_id: ${{ github.run_id }}
+      image_name: ${{ inputs.image_name }}
+    secrets:
+      AWS_ROLE_NAME: ${{ secrets.AWS_ROLE_NAME }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}

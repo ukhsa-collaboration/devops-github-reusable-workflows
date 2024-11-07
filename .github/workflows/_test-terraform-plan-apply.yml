@@ -1,4 +1,4 @@
-name: "[Test] Deploy Terraform stacks"
+name: "Test Deploy Terraform stacks"
 # Regression testing to try and catch and breaking changes
 
 on:

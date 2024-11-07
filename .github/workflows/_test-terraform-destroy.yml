@@ -1,4 +1,4 @@
-name: "[Test] Destroy Terraform stacks"
+name: "Test Destroy Terraform stacks"
 # Regression testing to try and catch and breaking changes. Will only run a destroy plan.
 
 on:
