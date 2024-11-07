@@ -1,0 +1,73 @@
+name: "[Analysis] Check Python Code"
+on:
+  workflow_call:
+    inputs:
+      code_coverage_dir:
+        required: true
+        description: "The directory of coverage script file"
+        type: string
+      lint_dir:
+        required: true
+        type: string
+        description: "The directory of linting script file"
+      function_path:
+        required: true
+        type: string
+        description: "The path to the functions directory that needs to lint"
+      shared_lib_path:
+        required: true
+        type: string
+        description: "The path to the shared library directory that needs to lint"
+      python_version:
+        required: true
+        type: string
+        description: "The version of the python"
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Python code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Python code. Normally left blank to use calling ref."
+
+
+jobs:
+  recursive-checks:
+    name: Lint and Scan Python code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install
+
+      - name: Code linting
+        run: poetry run lint ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
+        continue-on-error: true
+        working-directory: ${{ inputs.lint_dir }}
+
+      - name: Code coverage
+        run: poetry run coverage ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
+        continue-on-error: true
+        working-directory: ${{ inputs.code_coverage_dir }}
+
+      - name: Code test
+        run: poetry run pytest ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
+        continue-on-error: true
+        working-directory: ${{ inputs.code_coverage_dir }}
+
+
