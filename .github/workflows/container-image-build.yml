@@ -13,10 +13,10 @@ on:
         description: "Whether or not to generate a tag and release after building the image"
         type: boolean
         default: false
-      dockerfile_path:
-        description: "Path of the Dockerfile"
+      dockerfile:
+        description: "Name of the Dockerfile relative to the build context"
         type: string
-        default: "${{ inputs.docker_build_context}}/Dockerfile"
+        default: "Dockerfile"
       docker_build_context:
         description: "The context of the Docker build command"
         type: string
@@ -62,7 +62,7 @@ jobs:
           push: false
           tags: "container:latest"
           load: true
-          file: ${{ inputs.dockerfile_path }}
+          file: "${{ inputs.docker_build_context }}/${{ inputs.dockerfile }}"
           outputs: type=docker,dest=/tmp/container-image.tar
 
       - name: Unit tests

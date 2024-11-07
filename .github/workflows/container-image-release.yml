@@ -44,6 +44,9 @@ jobs:
       image: ${{ steps.push.outputs.image }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          repository: ${{ inputs.repo }}
 
       - uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-bump-tag@v0.3.0
         id: tag_bump
