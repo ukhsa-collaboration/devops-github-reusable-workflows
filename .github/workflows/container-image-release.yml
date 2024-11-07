@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: UKHSA-Internal/devops-github-actions/.github/actions/github-bump-tag@v0.2.0
+      - uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-bump-tag@v0.3.0
         id: tag_bump
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
