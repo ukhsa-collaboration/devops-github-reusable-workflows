@@ -9,14 +9,8 @@ on:
         description: "The AWS region containing the ECR repo"
         type: string
         default: "eu-west-2"
-      ecr_aws_account_id:
-        description: "The AWS account ID to push the ECR images to" 
-        type: string
       image_name:
         description: "The name of the container image" 
-        type: string
-      role_to_assume:
-        description: "IAM role to assume for pushing to ECR"
         type: string
       repo:
         required: false
@@ -28,7 +22,14 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."  
-  
+    secrets:
+      AWS_ROLE_NAME:
+        required: false
+        description: "The name of the role used to push the image."
+      AWS_ACCOUNT_ID:
+        required: false
+        description: "The account ID hosting the ECR repository."
+    
 
 permissions:
   id-token: write
@@ -57,7 +58,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-            role-to-assume: arn:aws:iam::${{ inputs.ecr_aws_account_id }}:role/${{ inputs.role_to_assume }}
+            role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_ROLE_NAME }}
             role-session-name: build-and-push-${{ github.sha }}
             aws-region: ${{ inputs.aws_region }}
 

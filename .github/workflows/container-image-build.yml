@@ -34,6 +34,14 @@ on:
     outputs:
       artifact_url:
         value: ${{ jobs.build.outputs.artifact_url }}
+    secrets:
+      AWS_ROLE_NAME:
+        required: false
+        description: "The name of the role used to push the image. Only used if `release_after_build` is true."
+      AWS_ACCOUNT_ID:
+        required: false
+        description: "The account ID hosting the ECR repository. Only used if `release_after_build` is true."
+  
 
 jobs:
   build:
@@ -86,3 +94,6 @@ jobs:
     with:
       artifact_run_id: ${{ github.run_id }}
       image_name: ${{ inputs.image_name }}
+    secrets:
+      AWS_ROLE_NAME: ${{ secrets.AWS_ROLE_NAME }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
