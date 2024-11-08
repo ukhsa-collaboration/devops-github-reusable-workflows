@@ -63,16 +63,16 @@ jobs:
       - name: Code linting
         run: poetry run lint ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
         continue-on-error: true
-        working-directory: ${{ inputs.lint_dir }}
+#        working-directory: ${{ inputs.lint_dir }}
 
       - name: Code coverage
         run: poetry run coverage ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
         continue-on-error: true
-        working-directory: ${{ inputs.code_coverage_dir }}
+#        working-directory: ${{ inputs.code_coverage_dir }}
 
       - name: Code test
         run: poetry run pytest ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
         continue-on-error: true
-        working-directory: ${{ inputs.code_coverage_dir }}
+#        working-directory: ${{ inputs.code_coverage_dir }}
 
 
