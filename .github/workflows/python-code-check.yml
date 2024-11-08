@@ -18,6 +18,10 @@ on:
         required: true
         type: string
         description: "The path to the shared library directory that needs to lint"
+      apps_dir:
+        required: true
+        type: string
+        description: "The directory of the apps"        
       python_version:
         required: true
         type: string
@@ -54,6 +58,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install poetry
           poetry install
+        working-directory: ${{ inputs.apps_dir }}          
 
       - name: Code linting
         run: poetry run lint ${{ inputs.function_path}} ${{ inputs.shared_lib_path}}
