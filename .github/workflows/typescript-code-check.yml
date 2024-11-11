@@ -1,0 +1,29 @@
+name: "[Analysis] Check Node.ts Code"
+on:
+  workflow_call:
+    inputs:
+      apps_dir:
+        required: true
+        type: string
+        description: "The directory of the apps"
+
+jobs:
+  recursive-checks:
+    name: Lint and Scan Python code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: ${{ inputs.apps_dir }}
+
+      - name: Code linting
+        run: npm nx run lint
+        continue-on-error: true
+        working-directory: ${{ inputs.apps_dir }}
+
+      - name: Code test
+        run: npm nx run pytest
+        continue-on-error: true
+        working-directory: ${{ inputs.apps_dir }}
