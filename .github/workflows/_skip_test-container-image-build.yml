@@ -1,0 +1,17 @@
+name: "Test Build Container Image"
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - .github/workflows/_test-container-image-build.yml
+      - .github/workflows/container-image-build.yml
+      - .github/workflows/container-image-release.yml
+
+jobs:
+  container_image_build_regression_test:
+    name: Test using devops-terraform-ci@main
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required" '
