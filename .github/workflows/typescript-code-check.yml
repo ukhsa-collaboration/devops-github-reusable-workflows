@@ -9,7 +9,7 @@ on:
 
 jobs:
   recursive-checks:
-    name: Lint and Scan Python code
+    name: Lint and Scan Type script code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
