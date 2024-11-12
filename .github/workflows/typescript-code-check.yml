@@ -19,11 +19,11 @@ jobs:
         working-directory: ${{ inputs.apps_dir }}
 
       - name: Code linting
-        run: npm nx run lint
+        run: npm run lint
         continue-on-error: true
         working-directory: ${{ inputs.apps_dir }}
 
       - name: Code test
-        run: npm nx run pytest
+        run: npm run test
         continue-on-error: true
         working-directory: ${{ inputs.apps_dir }}
