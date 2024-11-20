@@ -25,11 +25,6 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
-      runner_label:
-        required: false
-        type: string
-        default: "ubuntu-latest"
-        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
     
     secrets:
       TF_MODULES_SSH_DEPLOY_KEY:
@@ -42,7 +37,7 @@ on:
 jobs:
   recursive-checks:
     name: Lint and Scan Terraform code
-    runs-on: ${{ inputs.runner_label }}
+    runs-on: "ubuntu-latest"
     container:
       image: ghcr.io/ukhsa-internal/devops-terraform-ci:latest
       # Volume is workaround for https://github.com/actions/runner/issues/716
@@ -56,7 +51,7 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
   
       - name: Create pending check
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/github-status-check@main
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/github-status-check@v0.7.0
         id: create_check
         with:
           name: "terraform-checks"
@@ -71,7 +66,7 @@ jobs:
             | Checkov Scan       |  :hourglass_flowing_sand: Pending  |
 
       - name: Find Terraform version
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/parse-terraform-version@main
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
         id: terraform_version
         with:
           tf_file: "${{ inputs.stack_root_directory }}/terraform.tf"
@@ -92,14 +87,14 @@ jobs:
       - name: Terraform Linting with tflint
         id: tf_lint
         continue-on-error: true
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@main
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-tflint@v0.7.0
         with:
           tf_directory: ${{ inputs.stack_root_directory }}
           scan_modules: ${{ inputs.tflint_module_scan }}
 
       - name: SAST Scan Terraform code
         id: tf_scan
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@main
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@v0.7.0
         with:
           scan_directory: ${{ inputs.stack_root_directory }}
           scan_type: "${{ inputs.checkov_deep_scan && 'deep' || 'light' }}"
@@ -126,7 +121,7 @@ jobs:
           echo "tf_scan=$tf_scan" >> $GITHUB_ENV
 
       - name: Update check with result
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/github-status-check@main
+        uses: UKHSA-Internal/devops-github-actions/.github/actions/github-status-check@v0.7.0
         with:
           name: "terraform-checks"
           status: "completed"

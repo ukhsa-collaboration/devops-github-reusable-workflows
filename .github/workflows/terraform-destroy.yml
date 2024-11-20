@@ -24,11 +24,6 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
-      runner_label:
-        required: false
-        type: string
-        default: "ubuntu-latest"
-        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
     
     secrets:
       AWS_ROLE_NAME:
@@ -60,9 +55,9 @@ on:
 jobs:
   define_matrix:
     name: Define directory matrix for destroy
-    runs-on: ${{ inputs.runner_label }}
+    runs-on: ubuntu-latest
     outputs:
-      directories: "${{ steps.directories.outputs.json_directory_list }}"
+      stack_config: "${{ steps.stack_config.outputs.json_directory_list }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,8 +66,8 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
-          UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
-        id: directories
+          UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@v0.7.0
+        id: stack_config
         with:
           reverse: true
 
@@ -86,7 +81,7 @@ jobs:
       aws_region: ${{ inputs.aws_region }}
       repo: ${{ inputs.repo }}
       ref:  ${{ inputs.ref }}
-      directories: "${{ needs.define_matrix.outputs.directories }}"
+      stack_config: "${{ needs.define_matrix.outputs.stack_config }}"
       terraform_action: "destroy"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
     secrets: inherit
