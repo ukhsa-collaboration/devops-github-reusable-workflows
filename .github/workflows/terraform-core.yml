@@ -344,11 +344,11 @@ jobs:
 
           # If no changes are required, we can skip subsequent steps for this stack.
           if [ $terraform_exit_code -eq 0 ]; then
-            # If there are resources to be destroyed, the -detailed-exitcode returned is 0, despite changes being present.
-            # Additional logic required to inspect the tfplan.json file for if any destroy actions are present.
-            destroy_count=$(jq '[.resource_changes[] | select(.change.actions | index("delete"))] | length' tfplan.json)
-            echo "Destroy count: $destroy_count"
-            if [ "$destroy_count" -gt 0 ]; then
+            # If there are only resources to be destroyed or updated, the -detailed-exitcode returned is 0.
+            # Additional logic required to inspect the tfplan.json file for if any actions are present and ensure planned changes are applied.
+            action_count=$(jq '[.resource_changes[] | select(.change.actions | any(. == "create" or . == "update" or . == "delete"))] | length' tfplan.json)
+            echo "Action count: $action_count"
+            if [ "$action_count" -gt 0 ]; then
                 planned_changes=true
             else
                 planned_changes=false
