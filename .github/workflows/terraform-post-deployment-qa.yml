@@ -15,8 +15,8 @@ on:
         type: string
         default: "ubuntu-latest"
         description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
-      directories:
-        description: "The list of Terraform stacks to run Terraform in"
+      stack_config:
+        description: "A detailed matrix containing the Terraform stack configuration and dependencies"
         required: true
         type: string
       max_parallel:
@@ -63,27 +63,31 @@ jobs:
   deep-sast-scan:
     name: Run a deep SAST scan against Terraform code.
     runs-on: "ubuntu-latest"
+    environment: ${{ inputs.environment_name }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
-        directory: "${{ fromJSON(inputs.directories) }}"
+        stack: "${{ fromJSON(inputs.stack_config) }}"
       max-parallel: ${{ inputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Export variables
-        run: echo "state_name=$(basename ${{ matrix.directory }})" >> $GITHUB_ENV
+        run: echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
 
       - uses: actions/download-artifact@v4
         id: download_plan
         with:
-          name: "tfplan-${{ env.state_name }}"
-          path: ${{ matrix.directory }}
+          name: "${{ env.state_name }}-artefacts"
+          path: ${{ matrix.stack.directory }}
 
       - name: Deep SAST Scan Terraform code
         id: tf_scan
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.7.0
         with:
-          scan_directory: ${{ matrix.directory }}
+          scan_directory: ${{ matrix.stack.directory }}
           scan_type: "deep"
           tfplan_file: "tfplan.json"
 

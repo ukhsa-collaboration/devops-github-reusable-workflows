@@ -1,4 +1,4 @@
-name: "[CI] Deploy Terraform stacks"
+name: "[CI] Sequential Terraform apply"
 on:
   workflow_call:
     inputs:
@@ -32,6 +32,11 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+      runner_label:
+        required: false
+        type: string
+        default: "ubuntu-latest"
+        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
   
     secrets:
       AWS_ROLE_NAME:
@@ -74,16 +79,17 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
-          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.7.0
+          UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@v0.7.0
         id: stack_config
 
-  filter_matrix_1:
+  filter_matrix:
     name: Filter matrix for only planned changes
     needs:
       - define_matrix
     runs-on: ubuntu-latest
     outputs:
       filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
+      skip_remaining: ${{ steps.check_empty.outputs.skip_remaining }}
     steps:
       - name: Filter Stacks
         env:
@@ -93,26 +99,33 @@ jobs:
           echo '${{ needs.define_matrix.outputs.stack_config }}' > initial_matrix.json
           
           filtered_matrix=$(jq -c --arg env_name "${ENVIRONMENT_NAME}" '
-          [ .[]
-            | select(.planned_changes == true)
-            | if .runner_label == "self-hosted"
-              then .runner_label = ["self-hosted", $env_name]
-              else .
-              end
-          ]
+            [ .[]
+              | select(.planned_changes == true)
+              | if .runner_label == "self-hosted"
+                then .runner_label = ["self-hosted", $env_name]
+                else .
+                end
+            ]
           ' initial_matrix.json)
 
-          echo "Filtered Matrix: $filtered_matrix"
           echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
+      - name: Check if filtered matrix is empty
+        id: check_matrix
+        run: |
+          if [ "$filtered_matrix" = "[]" ]; then
+            echo "skip_remaining=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_remaining=false" >> $GITHUB_OUTPUT
+          fi
   
   check:
     name: Lint and SAST Scan Terraform code
     uses: ./.github/workflows/terraform-code-check.yml
     needs:
-      - filter_matrix_1
+      - filter_matrix
     strategy:
       matrix:
-        stack: ${{ fromJSON(needs.filter_matrix_1.outputs.filtered_matrix) }}
+        stack: ${{ fromJSON(needs.filter_matrix.outputs.filtered_matrix) }}
     with:
       stack_root_directory: "${{ matrix.stack.directory }}"
       repo: ${{ inputs.repo }}
@@ -121,105 +134,24 @@ jobs:
     secrets:
       REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
-  plan:
-    name: Plan Terraform
-    uses: ./.github/workflows/terraform-core.yml
-    needs:
-      - check
-      - filter_matrix_1
-    with:
-      environment_name: ${{ inputs.environment_name }}
-      aws_region: ${{ inputs.aws_region }}
-      repo: ${{ inputs.repo }}
-      ref:  ${{ inputs.ref }}
-      stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
-      destructive_action_check: ${{ inputs.destructive_action_check }}
-      terraform_action: "apply"
-      execute_terraform_plan: false
-      upload_plan: true
-      download_existing_plan: false
-    secrets: inherit
-
-  approve:
-    name: Approve deployment
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment_name }}
-    if: ${{ inputs.execute_terraform_plan }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    needs:
-      - check
-      - plan
-      - filter_matrix_1
-    steps:
-      - name: "Check approval requirement"
-        run: |
-          protection_rules=$(gh api -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          /repos/${{ github.repository }}/environments/${{ inputs.environment_name }} \
-          | jq -r '.protection_rules | length')
-
-          if [[ $protection_rules == "0" ]]; then
-            echo "Environment ${{ inputs.environment_name }} doesn't require manual approval. Automatically proceeding..."
-          fi
-
-  filter_matrix_2:
-    name: Filter matrix for only planned changes
-    needs:
-      - plan
-      - approve
-    runs-on: ubuntu-latest
-    outputs:
-      filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
-      skip_remaining: ${{ steps.check_matrix.outputs.skip_remaining }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: "./artifacts"
-      - name: Filter Stacks
-        id: filter_matrix
-        run: |
-          jq -s '.' ./artifacts/**/updated_matrix.json > combined_matrix.json
-          cat combined_matrix.json
-
-          filtered_matrix=$(jq -c '
-          [ .[]
-            | select(.planned_changes == true)
-          ] | sort_by(.order)
-          ' combined_matrix.json)
-
-          echo "Filtered Matrix: $filtered_matrix"
-          echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
-      - name: Check if filtered matrix is empty
-        id: check_matrix
-        run: |
-          filtered_matrix='${{ steps.filter_matrix.outputs.filtered_matrix }}'
-          if [ "$filtered_matrix" = "[]" ]; then
-            echo "Matrix is empty"
-            echo "skip_remaining=true" >> $GITHUB_OUTPUT
-          else
-            echo "Matrix is not empty"
-            echo "skip_remaining=false" >> $GITHUB_OUTPUT
-          fi
-
   apply:
     name: Run Terraform
-    if: ${{ needs.filter_matrix_2.outputs.skip_remaining == 'false' }}
+    if: ${{ needs.filter_matrix.outputs.skip_remaining == 'false' }}
     uses: ./.github/workflows/terraform-core.yml
     needs:
-      - approve
-      - filter_matrix_2
+      - check
+      - filter_matrix
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
       repo: ${{ inputs.repo }}
       ref:  ${{ inputs.ref }}
-      stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
+      stack_config: "${{ needs.filter_matrix.outputs.filtered_matrix }}"
       destructive_action_check: ${{ inputs.destructive_action_check }}
       terraform_action: "apply"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
-      upload_plan: false
-      download_existing_plan: true
+      upload_plan: true
+      download_existing_plan: false
     secrets: inherit
 
   # update-deployment:
@@ -232,7 +164,7 @@ jobs:
   #           --method GET \
   #           -H "X-GitHub-Api-Version: 2022-11-28"  \
   #           -f 'q=sha:${{ github.sha }};environment:${{ inputs.environment_name }}' \
-  #           /repos/ukhsa-collaboration/${{ github.event.repository.name }}/deployments)
+  #           /repos/UKHSA-Internal/${{ github.event.repository.name }}/deployments)
 
   #         gh api \
   #           --method POST \
