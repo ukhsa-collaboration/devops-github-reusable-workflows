@@ -71,7 +71,7 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
-          UKHSA-Internal/devops-github-actions/.github/actions/terraform-dependency-sort@main
+          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.7.0
         id: directories
         with:
           reverse: true

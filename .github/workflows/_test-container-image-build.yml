@@ -15,7 +15,7 @@ jobs:
     name: Test using devops-terraform-ci@main
     uses: ./.github/workflows/container-image-build.yml
     with:
-      repo: UKHSA-Internal/devops-terraform-ci
+      repo: ukhsa-collaboration/devops-terraform-ci
       ref: "main"
       release_after_build: false
     permissions:
