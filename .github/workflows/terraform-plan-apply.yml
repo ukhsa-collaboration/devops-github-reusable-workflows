@@ -150,6 +150,8 @@ jobs:
       - filter_matrix_1
     with:
       stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
+      repo: ${{ inputs.repo }}
+      ref: ${{ inputs.ref }}
     secrets: inherit
   
   approve:
