@@ -74,6 +74,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
