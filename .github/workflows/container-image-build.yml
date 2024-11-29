@@ -143,6 +143,7 @@ jobs:
           elif [ "${{ steps.aws_auth.outcome }}" == "success" ]; then
             echo "uri=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/${{ inputs.image_name }}:${{ inputs.tags }}" >> $GITHUB_OUTPUT
           else
+            echo "uri=local/${{ inputs.image_name }}:${{ inputs.tags }}" >> $GITHUB_OUTPUT
             echo "Warning: Neither AWS nor Azure have been authenticated. The image will be discarded at the end of this workflow."
           fi
 
@@ -155,6 +156,8 @@ jobs:
           platforms: ${{ inputs.docker_platforms }}
           build-args: ${{ inputs.build_args }}
           push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # Optional: Run Unit Tests.
       - name: Run Unit Tests
@@ -168,8 +171,13 @@ jobs:
             exit 1
           fi
           echo "Running unit tests..."
-          ${{ inputs.test_command }}
-        
+          if ! ${{ inputs.test_command }}; then
+            echo "Unit tests failed."
+            exit 1
+          fi
+      
       - name: Push Docker Image
-        if: ${{ steps.unit_tests.outcome == 'success' && ( steps.az_auth.outcome != 'skipped' || steps.aws_auth.outcome != 'skipped' ) }}
+        if: >-
+          ${{ steps.unit_tests.outcome == 'success' &&
+          (steps.az_auth.outcome == 'success' || steps.aws_auth.outcome == 'success') }}
         run: docker image push ${{ steps.build_uri.outputs.uri }}
