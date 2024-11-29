@@ -4,9 +4,9 @@ name: "[Analysis] Terraform Cost Estimation with Infracost"
 on:
   workflow_call:
     inputs:
-      stack_root_directory:
+      stack_config:
+        description: "A detailed matrix containing the Terraform stack configuration and dependencies"
         required: true
-        description: "The root of the stack to run the Infracost check in"
         type: string
       repo:
         required: false
@@ -33,7 +33,9 @@ jobs:
   infracost:
     name: Compare cost to main
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        stack: "${{ fromJSON(inputs.stack_config) }}"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -66,7 +68,7 @@ jobs:
       - name: Generate current Infracost
         continue-on-error: true
         env:
-          stack_root_directory: ${{ inputs.stack_root_directory }}
+          stack_root_directory: ${{ matrix.stack.directory }}
         run: |
           infracost breakdown --path=${stack_root_directory} \
                               --format=json \
@@ -80,6 +82,8 @@ jobs:
 
       - name: Generate new Infracost
         continue-on-error: true
+        env:
+          stack_root_directory: ${{ matrix.stack.directory }}
         run: |
           infracost diff --path=${stack_root_directory} \
                           --format=json \

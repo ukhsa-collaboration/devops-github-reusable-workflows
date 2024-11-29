@@ -140,6 +140,15 @@ jobs:
       download_existing_plan: false
     secrets: inherit
 
+  cost:
+    uses: ./.github/workflows/terraform-infra-cost.yml
+    needs:
+      - check
+      - filter_matrix_1
+    with:
+      stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
+    secrets: inherit
+  
   approve:
     name: Approve deployment
     runs-on: ubuntu-latest
@@ -221,19 +230,6 @@ jobs:
       upload_plan: false
       download_existing_plan: true
     secrets: inherit
-
-  cost:
-    uses: ./.github/workflows/terraform-infra-cost.yml
-    strategy:
-      matrix:
-        directory: ${{ fromJSON(needs.define_matrix.outputs.directories) }}
-    needs:
-      - check
-      - define_matrix
-    with:
-      stack_root_directory: "${{ matrix.directory }}"
-    secrets:
-      INFRACOST_API_KEY: "foo"
     
   # update-deployment:
   #   name: Update Github deployment
