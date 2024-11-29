@@ -1,88 +1,171 @@
-name: "Build, Test and Push Container Image"
+name: Docker Build with Optional Tests
+
 on:
   workflow_call:
     inputs:
-      image_name:
-        description: "The name of the image"
+      run_tests:
+        description: "Enable or disable unit tests"
+        required: false
+        default: "false"
         type: string
-      unit_tests_command:
-        description: "The command to run unit tests of the application"
+      test_command:
+        description: "Command to run unit tests"
+        required: false
+        default: ""
         type: string
-        default: echo docker run container:latest pytest || exit 1
-      release_after_build:
-        description: "Whether or not to generate a tag and release after building the image"
-        type: boolean
-        default: false
       dockerfile_path:
-        description: "Path of the Dockerfile"
+        description: "Path to the Dockerfile"
+        default: "./Dockerfile"
         type: string
-        default: "${{ inputs.docker_build_context}}/Dockerfile"
-      docker_build_context:
-        description: "The context of the Docker build command"
-        type: string
+      context:
+        description: "Build context"
         default: "."
+        type: string
+      image_name:
+        description: "Docker image name"
+        required: true
+        type: string
+      tags:
+        description: "Docker image tags"
+        default: "latest"
+        type: string
+      build_args:
+        description: "Docker build arguments"
+        default: ""
+        type: string
+      aws_region:
+        description: "AWS region (for ECR)"
+        required: false
+        type: string
+        default: "eu-west-2"
+      docker_platforms:
+        description: "Set the target platform(s) for the build. Can be a comma-seperated list"
+        default: "linux/arm64"
+        type: string
       repo:
         required: false
         type: string
         default: ${{ github.repository }}
-        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank."
       ref:
         required: false
         type: string
         default: ${{ github.ref }}
-        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."  
-    outputs:
-      artifact_url:
-        value: ${{ jobs.build.outputs.artifact_url }}
+        description: "Specify the branch of the Terraform code. Normally left blank."  
+
+    secrets:
+      AWS_ROLE_NAME:
+        required: false
+      AWS_ACCOUNT_ID:
+        required: false
+      AZURE_SUBSCRIPTION_ID:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_RESOURCE_GROUP_NAME:
+        required: false
 
 jobs:
-  build:
-    name: Docker build image
+  build-push:
     runs-on: ubuntu-latest
-    outputs:
-      artifact_url: ${{ steps.upload.outputs.artifact-url }}
-    permissions:
-      id-token: write
-      contents: write
-      actions: read
+
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.repo }}
-          ref: ${{ inputs.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      # ACR Login
+      - name: Configure Azure Credentials
+        uses: azure/login@v2
+        env:
+          AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        if: >-
+          ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' &&
+          env.AZURE_SUBSCRIPTION_ID != '' }}
+        with:
+          client-id: "${{ env.AZURE_CLIENT_ID }}"
+          tenant-id: "${{ env.AZURE_TENANT_ID }}"
+          subscription-id: "${{ env.AZURE_SUBSCRIPTION_ID }}"
+
+      - name: Log in to Azure Container Registry
+        env:
+          AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        id: az_auth
+        if: >-
+          ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' &&
+          env.AZURE_SUBSCRIPTION_ID != '' }}
+        run: |
+          az acr login --name ${{ secrets.AZURE_CLIENT_ID }}
+          token=$(az acr login --name ${{ secrets.AZURE_CLIENT_ID }} --expose-token --output tsv --query accessToken)
+          echo $token | docker login ${{ secrets.AZURE_CLIENT_ID }}.azurecr.io --username 00000000-0000-0000-0000-000000000000 --password-stdin
+
+      # ECR Login
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        env:
+          AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
+          AWS_ROLE_NAME: "${{ secrets.AWS_ROLE_NAME }}"
+        if: ${{ env.AWS_ROLE_NAME != '' && env.AWS_ACCOUNT_ID != '' }}
+        with:
+          aws-region: "${{ inputs.aws_region }}"
+          role-to-assume: "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}"
+
+      - name: Authenticate to Amazon ECR
+        id: aws_auth
+        env:
+          AWS_ACCOUNT_ID: "${{ secrets.AWS_ACCOUNT_ID }}"
+          AWS_ROLE_NAME: "${{ secrets.AWS_ROLE_NAME }}"
+        if: ${{ env.AWS_ROLE_NAME != '' && env.AWS_ACCOUNT_ID != '' }}
+        run: |
+          aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
+
+      - name: Build URI for push
+        id: build_uri
+        shell: bash
+        run: |
+          if [ "${{ steps.az_auth.outcome }}" == "success" ]; then
+            echo "uri=${{ secrets.AZURE_CLIENT_ID }}.azurecr.io/${{ inputs.image_name }}:${{ inputs.tags }}" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.aws_auth.outcome }}" == "success" ]; then
+            echo "uri=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/${{ inputs.image_name }}:${{ inputs.tags }}" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Neither AWS nor Azure have been authenticated. The image will be discarded at the end of this workflow."
+          fi
+
+      - name: Build Docker Image
         uses: docker/build-push-action@v6
         with:
-          context: ${{ inputs.docker_build_context }}
-          push: false
-          tags: "container:latest"
-          load: true
           file: ${{ inputs.dockerfile_path }}
-          outputs: type=docker,dest=/tmp/container-image.tar
+          tags: ${{ steps.build_uri.outputs.uri }}
+          context: ${{ inputs.context }}
+          platforms: ${{ inputs.docker_platforms }}
+          build-args: ${{ inputs.build_args }}
+          push: false
 
-      - name: Unit tests
-        if: inputs.unit_tests_command != ''
+      # Optional: Run Unit Tests.
+      - name: Run Unit Tests
+        id: unit_tests
+        env:
+          DOCKER_IMAGE: ${{ steps.build_uri.outputs.uri }}
+        if: ${{ inputs.run_tests == 'true' }}
         run: |
-          ${{ inputs.unit_tests_command }}
-
-      - uses: actions/upload-artifact@v4
-        if: inputs.release_after_build
-        id: upload
-        with:
-          name: container-image
-          path: /tmp/container-image.tar
-          retention-days: 1
-
-  release:
-    uses: ./.github/workflows/container-image-release.yml
-    if: inputs.release_after_build
-    needs:
-      - build
-    with:
-      artifact_run_id: ${{ github.run_id }}
-      image_name: ${{ inputs.image_name }}
+          if [ -z "${{ inputs.test_command }}" ]; then
+            echo "Test command is required when 'run_tests' is enabled."
+            exit 1
+          fi
+          echo "Running unit tests..."
+          ${{ inputs.test_command }}
+        
+      - name: Push Docker Image
+        if: ${{ steps.unit_tests.outcome == 'success' && ( steps.az_auth.outcome != 'skipped' || steps.aws_auth.outcome != 'skipped' ) }}
+        run: docker image push ${{ steps.build_uri.outputs.uri }}
