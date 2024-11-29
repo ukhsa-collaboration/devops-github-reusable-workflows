@@ -156,6 +156,7 @@ jobs:
           platforms: ${{ inputs.docker_platforms }}
           build-args: ${{ inputs.build_args }}
           push: false
+          load: ${{ inputs.run_tests }} # Load to docker images to allow unit tests to use it.    
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
