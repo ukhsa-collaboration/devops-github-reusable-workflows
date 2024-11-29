@@ -85,7 +85,7 @@ jobs:
 
       - name: Deep SAST Scan Terraform code
         id: tf_scan
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/terraform-checkov-scan@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.7.0
         with:
           scan_directory: ${{ matrix.stack.directory }}
           scan_type: "deep"

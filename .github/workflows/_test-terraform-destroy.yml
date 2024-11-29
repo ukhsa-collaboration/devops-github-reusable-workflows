@@ -1,4 +1,4 @@
-name: "[Test] Destroy Terraform stacks"
+name: "Test Destroy Terraform stacks"
 # Regression testing to try and catch and breaking changes. Will only run a destroy plan.
 
 on:
@@ -14,7 +14,7 @@ jobs:
     name: Test using devops-terraform-example-project@main
     uses: ./.github/workflows/terraform-destroy.yml
     with:
-      repo: UKHSA-Internal/devops-terraform-example-project
+      repo: ukhsa-collaboration/devops-terraform-example-project
       ref: "main"
       execute_terraform_plan: false
     permissions:

@@ -155,7 +155,7 @@ jobs:
           done
 
       - name: Find Terraform version
-        uses: UKHSA-Internal/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
         id: terraform_version
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
@@ -186,7 +186,7 @@ jobs:
           SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY != '' && secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}
           SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
         run: |
-          # Add SSH deploy key to ssh-agent to allow internal or private UKHSA-Internal
+          # Add SSH deploy key to ssh-agent to allow internal or private ukhsa-collaboration
           # modules to be downloaded during terraform init.
           if [ -n "$SSH_DEPLOY_KEY" ]; then
             mkdir -p ~/.ssh

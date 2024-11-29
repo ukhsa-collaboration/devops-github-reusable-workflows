@@ -1,0 +1,81 @@
+name: "Tag and Release image"
+on:
+  workflow_call:
+    inputs:
+      artifact_run_id:
+        description: "The run ID of the workflow that generated a container-image artifact"
+        type: string
+      aws_region:
+        description: "The AWS region containing the ECR repo"
+        type: string
+        default: "eu-west-2"
+      ecr_aws_account_id:
+        description: "The AWS account ID to push the ECR images to" 
+        type: string
+      image_name:
+        description: "The name of the container image" 
+        type: string
+      role_to_assume:
+        description: "IAM role to assume for pushing to ECR"
+        type: string
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."  
+  
+
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+  
+jobs:
+  release:
+    name: Tag and release
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag_bump.outputs.new_tag }}
+      image: ${{ steps.push.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-bump-tag@v0.2.0
+        id: tag_bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+            role-to-assume: arn:aws:iam::${{ inputs.ecr_aws_account_id }}:role/${{ inputs.role_to_assume }}
+            role-session-name: build-and-push-${{ github.sha }}
+            aws-region: ${{ inputs.aws_region }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+    
+      - name: Load, tag and push image
+        id: push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.tag_bump.outputs.new_tag }}
+          APP_NAME: ${{ inputs.image_name }}
+        run: |
+          docker load --input $GITHUB_WORKSPACE/container-image.tar
+          docker tag container:latest $ECR_REGISTRY/$APP_NAME:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$APP_NAME:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$APP_NAME:$IMAGE_TAG" >> $GITHUB_OUTPUT

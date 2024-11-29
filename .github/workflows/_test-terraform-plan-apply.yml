@@ -1,4 +1,4 @@
-name: "[Test] Deploy Terraform stacks"
+name: "Test Deploy Terraform stacks"
 # Regression testing to try and catch and breaking changes
 
 on:
@@ -15,7 +15,7 @@ jobs:
     name: Test using devops-terraform-example-project@main
     uses: ./.github/workflows/terraform-plan-apply.yml
     with:
-      repo: UKHSA-Internal/devops-terraform-example-project
+      repo: ukhsa-collaboration/devops-terraform-example-project
       ref: "main"
       execute_terraform_plan: true
     permissions:
