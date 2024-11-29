@@ -31,3 +31,4 @@ jobs:
       AWS_ACCOUNT_ID: ${{ secrets.TEST_AWS_ACCOUNT_ID }}
       AWS_ROLE_NAME: ${{ secrets.TEST_AWS_ROLE_NAME }}
       TF_MODULES_SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY }}
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}

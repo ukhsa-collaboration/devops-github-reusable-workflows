@@ -30,3 +30,5 @@ This workflow handles the deployment of Terraform stacks, with various checks an
 `TF_MODULES_SSH_DEPLOY_KEY` (optional): SSH key for cloning Terraform modules.
 
 `REPO_SSH_DEPLOY_KEY` (optional): SSH key for checking out private repositories.
+
+`INFRACOST_API_KEY` (optional): The API key for generating Infracost reports.

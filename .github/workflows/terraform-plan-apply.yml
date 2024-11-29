@@ -59,6 +59,9 @@ on:
       SSH_DEPLOY_KEY:
         required: false
         description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
+      INFRACOST_API_KEY:
+        required: false
+        description: "The API key for generating Infracost reports."
         
 jobs:
   define_matrix:
