@@ -54,10 +54,10 @@ jobs:
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.7.0
         id: create_check
         with:
-          name: "terraform-checks"
+          name: "Terraform Checks - ${{ inputs.stack_root_directory }}"
           status: "in_progress"
-          title: "Terraform code checks"
-          summary: "Terraform code checks are currently in-progress"
+          title: "Terraform code checks for ${{ inputs.stack_root_directory }}"
+          summary: "Terraform code checks for the ${{ inputs.stack_root_directory }} stack are currently in-progress"
           details: |
             | Check              | Status                             |
             | :----------------: | :--------------------------------: |
@@ -123,10 +123,10 @@ jobs:
       - name: Update check with result
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.7.0
         with:
-          name: "terraform-checks"
+          name: "Terraform Checks - ${{ inputs.stack_root_directory }}"
           status: "completed"
-          title: "Terraform code checks"
-          summary: "Terraform code checks have completed"
+          title: "Terraform code checks for ${{ inputs.stack_root_directory }}"
+          summary: "Terraform code checks for the ${{ inputs.stack_root_directory }} stack have completed"
           conclusion: "${{ env.job_status }}"
           check-run-id: ${{ steps.create_check.outputs.check-run-id }}
           details: |
