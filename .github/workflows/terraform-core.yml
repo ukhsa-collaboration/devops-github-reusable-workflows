@@ -419,7 +419,7 @@ jobs:
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          gpg --decrypt --batch --symmetric --passphrase-file "$pass_file" tfplan
+          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
 
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
