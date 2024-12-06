@@ -313,6 +313,7 @@ jobs:
 
       - name: Decrypt Terraform plan
         if: steps.download_plan.conclusion == 'success'
+        working-directory: "${{ matrix.stack.directory }}"
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         run: |
@@ -411,6 +412,7 @@ jobs:
       - name: Encrypt Terraform plan
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        working-directory: "${{ matrix.stack.directory }}"
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
