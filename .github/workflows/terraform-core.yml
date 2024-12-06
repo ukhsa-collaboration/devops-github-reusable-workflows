@@ -311,6 +311,15 @@ jobs:
           name: "${{ env.state_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
 
+      - name: Decrypt Terraform plan
+        if: steps.download_plan.conclusion == 'success'
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          openssl enc -in tfplan.enc -out tfplan -d -aes256 -pass file:"$pass_file"
+
       - name: Terraform Plan
         id: tf_plan
         working-directory: "${{ matrix.stack.directory }}"
@@ -398,6 +407,14 @@ jobs:
             > updated_matrix.json
 
           cat updated_matrix.json
+
+      - name: Encrypt Terraform plan
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          openssl enc -in tfplan -out tfplan.enc -e -aes256 -pass file:"$pass_file"
 
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
