@@ -87,6 +87,9 @@ on:
       SSH_DEPLOY_KEY:
         required: false
         description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
+      TF_PLAN_ENCRYPTION_PASSPHRASE:
+        required: true
+        description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
 
 jobs:
   initialise:
@@ -311,6 +314,16 @@ jobs:
           name: "${{ env.state_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
 
+      - name: Decrypt Terraform plan
+        if: steps.download_plan.conclusion == 'success'
+        working-directory: "${{ matrix.stack.directory }}"
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan tfplan.gpg
+
       - name: Terraform Plan
         id: tf_plan
         working-directory: "${{ matrix.stack.directory }}"
@@ -399,13 +412,22 @@ jobs:
 
           cat updated_matrix.json
 
+      - name: Encrypt Terraform plan
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        working-directory: "${{ matrix.stack.directory }}"
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
+
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
         if: ${{ inputs.upload_plan }}
         with:
           name: "${{ env.state_name }}-artefacts"
           path: |
-            ${{ matrix.stack.directory }}/tfplan*
+            ${{ matrix.stack.directory }}/tfplan.gpg
             ${{ matrix.stack.directory }}/updated_matrix.json
           if-no-files-found: warn
           compression-level: 1
