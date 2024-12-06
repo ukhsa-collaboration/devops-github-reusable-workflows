@@ -322,7 +322,7 @@ jobs:
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          openssl enc -in tfplan.enc -out tfplan -d -aes256 -pass file:"$pass_file"
+          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
 
       - name: Terraform Plan
         id: tf_plan
@@ -419,7 +419,7 @@ jobs:
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          openssl enc -in tfplan -out tfplan.enc -e -aes256 -pass file:"$pass_file"
+          gpg --decrypt --batch --symmetric --passphrase-file "$pass_file" tfplan
 
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
@@ -427,7 +427,7 @@ jobs:
         with:
           name: "${{ env.state_name }}-artefacts"
           path: |
-            ${{ matrix.stack.directory }}/tfplan*
+            ${{ matrix.stack.directory }}/tfplan.gpg
             ${{ matrix.stack.directory }}/updated_matrix.json
           if-no-files-found: warn
           compression-level: 1
