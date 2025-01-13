@@ -1,4 +1,4 @@
-name: "[Setup] Initialise and perform Terraform actions"
+name: "[Setup] Initialise and perform OpenTofu actions"
 on:
   workflow_call:
     inputs:
@@ -14,18 +14,18 @@ on:
         required: false
         type: boolean
         default: false
-      execute_terraform_plan:
+      execute_opentofu_plan:
         required: false
         type: boolean
         default: false
-        description: "Whether or not to apply the Terraform code. Set to false for a plan only."
-      terraform_action:
+        description: "Whether or not to apply the OpenTofu code. Set to false for a plan only."
+      opentofu_action:
         required: false
         type: string
         default: "apply"
-        description: "Which Terraform action to run. 'apply' or 'destroy'"
+        description: "Which OpenTofu action to run. 'apply' or 'destroy'"
       stack_config:
-        description: "A detailed matrix containing the Terraform stack configuration and dependencies"
+        description: "A detailed matrix containing the OpenTofu stack configuration and dependencies"
         required: true
         type: string
       max_parallel:
@@ -37,36 +37,36 @@ on:
         required: false
         type: string
         default: ${{ github.repository }}
-        description: "Specify the org/repo of the repo containing Terraform code. Normally left blank to clone calling repo."
+        description: "Specify the org/repo of the repo containing OpenTofu code. Normally left blank to clone calling repo."
       ref:
         required: false
         type: string
         default: ${{ github.ref }}
-        description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+        description: "Specify the branch of the OpenTofu code. Normally left blank to use calling ref."
       upload_plan:
         required: false
         type: boolean
         default: false
-        description: "Create an artifact containing the resulting Terraform plan. Incompatible with download_existing_plan"
+        description: "Create an artifact containing the resulting OpenTofu plan. Incompatible with download_existing_plan"
       download_existing_plan:
         required: false
         type: boolean
         default: false
-        description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
+        description: "Download an artifact containing an existing OpenTofu plan created by a previous run. Incompatible with upload_plan"
     
     secrets:
       AWS_ROLE_NAME:
         required: false
-        description: "The name of the role to assume when Terraform interacts with the AWS API."
+        description: "The name of the role to assume when OpenTofu interacts with the AWS API."
       AWS_ACCOUNT_ID:
         required: false
-        description: "The AWS account ID where Terraform will create resources. This account must contain the role specified in AWS_ROLE_NAME."
+        description: "The AWS account ID where OpenTofu will create resources. This account must contain the role specified in AWS_ROLE_NAME."
       AWS_ACCESS_KEY_ID:
         required: false
-        description: "AWS credentials used by Terraform to interact with AWS API. Not required if using OIDC."
+        description: "AWS credentials used by OpenTofu to interact with AWS API. Not required if using OIDC."
       AWS_SECRET_ACCESS_KEY:
         required: false
-        description: "AWS credentials used by Terraform to interact with AWS API. Not required if using OIDC."
+        description: "AWS credentials used by OpenTofu to interact with AWS API. Not required if using OIDC."
       AZURE_SUBSCRIPTION_ID:
         required: false
       AZURE_TENANT_ID:
@@ -77,10 +77,10 @@ on:
         required: false
       GH_TOKEN:
         required: false
-        description: "Github Token used by Terraform to create and manage resources in Github"
+        description: "Github Token used by OpenTofu to create and manage resources in Github"
       TF_MODULES_SSH_DEPLOY_KEY:
         required: false
-        description: "The SSH key used to clone Terraform modules downloaded as part of the Terraform init"
+        description: "The SSH key used to clone OpenTofu modules downloaded as part of the OpenTofu init"
       REPO_SSH_DEPLOY_KEY:
         required: false
         description: "The SSH key used to checkout private remote repos"
@@ -89,11 +89,11 @@ on:
         description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
       TF_PLAN_ENCRYPTION_PASSPHRASE:
         required: true
-        description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
+        description: "The passphrase used to encrypt OpenTofu Plans before uploading them as Github Artifacts"
 
 jobs:
   initialise:
-    name: "Initialise and run Terraform for ${{ matrix.stack.directory }}"
+    name: "Initialise and run OpenTofu for ${{ matrix.stack.directory }}"
     runs-on: "${{ matrix.stack.runner_label }}"
     environment: ${{ inputs.environment_name }}
     defaults:
@@ -146,7 +146,7 @@ jobs:
         env:
           DIRECTORY: "${{ matrix.stack.directory }}"
         run: |
-          files_to_copy=("providers.tf" "terraform.tf")
+          files_to_copy=("providers.tf" "opentofu.tf")
 
           for FILE in "${files_to_copy[@]}"; do
             if [[ ! -f "$DIRECTORY"/"$FILE" ]]; then
@@ -157,25 +157,25 @@ jobs:
             fi
           done
 
-      - name: Find Terraform version
+      - name: Find OpenTofu version
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
-        id: terraform_version
+        id: opentofu_version
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
 
-      - name: Setup Terraform for self-hosted runner
+      - name: Setup OpenTofu for self-hosted runner
         if: ${{ contains(matrix.stack.runner_label, 'self-hosted') }}
         run: |
-          echo "Terraform Version: ${{ steps.terraform_version.outputs.tf_version }}" 
-          tfenv use ${{ steps.terraform_version.outputs.tf_version }}
-          terraform --version
+          echo "OpenTofu Version: ${{ steps.opentofu_version.outputs.tf_version }}" 
+          tfenv use ${{ steps.opentofu_version.outputs.tf_version }}
+          tofu --version
         working-directory: ${{ matrix.stack.directory }}
 
-      - name: Setup Terraform for GHE runner
+      - name: Setup OpenTofu for GHE runner
         if: ${{ !contains(matrix.stack.runner_label, 'self-hosted') }}
-        uses: hashicorp/setup-terraform@v3
+        uses: opentofu/setup-opentofu@v1
         with:
-          terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
+          tofu_version: "${{ steps.opentofu_version.outputs.tf_version }}"
 
       - name: Determine Backend Type
         working-directory: "${{ matrix.stack.directory }}"
@@ -190,7 +190,7 @@ jobs:
           SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
         run: |
           # Add SSH deploy key to ssh-agent to allow internal or private ukhsa-collaboration
-          # modules to be downloaded during terraform init.
+          # modules to be downloaded during tofu init.
           if [ -n "$SSH_DEPLOY_KEY" ]; then
             mkdir -p ~/.ssh
             ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -200,7 +200,7 @@ jobs:
           
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
 
-      - name: Terraform Init with AWS S3 Backend
+      - name: OpenTofu Init with AWS S3 Backend
         working-directory: "${{ matrix.stack.directory }}"
         if: ${{ steps.backend.outputs.backend_type == 's3' }}
         env:
@@ -212,12 +212,12 @@ jobs:
           s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
           dynamodb_table=${AWS_REGION}-state-locks
           s3_bucket=${AWS_ACCOUNT_ID}-${AWS_REGION}-state
-          terraform init \
+          tofu init \
             -backend-config=dynamodb_table="${dynamodb_table}" \
             -backend-config=bucket="${s3_bucket}" \
             -backend-config=key="${s3_key}"
 
-      - name: Terraform Init with Azure Backend
+      - name: OpenTofu Init with Azure Backend
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
         working-directory: "${{ matrix.stack.directory }}"
         env:
@@ -231,7 +231,7 @@ jobs:
           # Container name needs to be a valid DNS name with less than 63 characters.
           container_name=$(dirname "$DIRECTORY" | tr -cd '[:alnum:]-' | cut -c1-62)
           storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
-          terraform init \
+          tofu init \
             -backend-config=storage_account_name="${storage_account_name}" \
             -backend-config=container_name="$container_name" \
             -backend-config=key=$ENVIRONMENT_NAME/"$state_name"/terraform.tfstate \
@@ -242,18 +242,18 @@ jobs:
         id: state_empty
         shell: bash
         env:
-          execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
+          execute_opentofu_plan: ${{ inputs.execute_opentofu_plan }}
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
           skip_workflow=false
-          if [[ $(terraform state list | head -c1 | wc -c) -ne 0 ]]; then
+          if [[ $(tofu state list | head -c1 | wc -c) -ne 0 ]]; then
             state_empty=false
           else
             state_empty=true
-            if [[ "$execute_terraform_plan" == "false" ]]; then
+            if [[ "$execute_opentofu_plan" == "false" ]]; then
               skip_workflow=true
             fi
           fi
@@ -261,7 +261,7 @@ jobs:
           echo "state_empty=$state_empty" >> $GITHUB_OUTPUT
           echo "skip_workflow=$skip_workflow" >> $GITHUB_OUTPUT
 
-      - name: Find Terraform variables
+      - name: Find OpenTofu variables
         id: variables
         if: steps.state_empty.outputs.skip_workflow == 'false'
         env:
@@ -314,7 +314,7 @@ jobs:
           name: "${{ env.state_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
 
-      - name: Decrypt Terraform plan
+      - name: Decrypt OpenTofu plan
         if: steps.download_plan.conclusion == 'success'
         working-directory: "${{ matrix.stack.directory }}"
         env:
@@ -324,39 +324,39 @@ jobs:
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan tfplan.gpg
 
-      - name: Terraform Plan
+      - name: OpenTofu Plan
         id: tf_plan
         working-directory: "${{ matrix.stack.directory }}"
         continue-on-error: true
         if: steps.download_plan.conclusion == 'skipped' && steps.state_empty.outputs.skip_workflow == 'false' 
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          OPENTOFU_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          TERRAFORM_ACTION: ${{ inputs.terraform_action }}
+          OPENTOFU_ACTION: ${{ inputs.opentofu_action }}
         run: |
           # Required, otherwise GitHub will exit immediately when the tf plan exit code is non-zero (2 = changes)
           set +e 
 
-          if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
-            terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+          if [[ "$OPENTOFU_ACTION" == "destroy" ]]; then
+            tofu plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${OPENTOFU_VARIABLES}
           else
-            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            tofu plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${OPENTOFU_VARIABLES}
           fi
           
-          terraform_exit_code=$?
+          opentofu_exit_code=$?
 
-          echo "Terraform exit code: $terraform_exit_code"
-          echo "terraform_exit_code=$terraform_exit_code" >> $GITHUB_OUTPUT
+          echo "OpenTofu exit code: $opentofu_exit_code"
+          echo "opentofu_exit_code=$opentofu_exit_code" >> $GITHUB_OUTPUT
 
-          terraform show -json tfplan | jq > tfplan.json
+          tofu show -json tfplan | jq > tfplan.json
 
           # If no changes are required, we can skip subsequent steps for this stack.
-          if [ $terraform_exit_code -eq 0 ]; then
+          if [ $opentofu_exit_code -eq 0 ]; then
             # If there are only resources to be destroyed or updated, the -detailed-exitcode returned is 0.
             # Additional logic required to inspect the tfplan.json file for if any actions are present and ensure planned changes are applied.
             action_count=$(jq '[.resource_changes[] | select(.change.actions | any(. == "create" or . == "update" or . == "delete"))] | length' tfplan.json)
@@ -366,22 +366,22 @@ jobs:
             else
                 planned_changes=false
             fi
-          elif [ $terraform_exit_code -eq 2 ]; then
+          elif [ $opentofu_exit_code -eq 2 ]; then
               planned_changes=true
           else
-              exit $terraform_exit_code
+              exit $opentofu_exit_code
           fi
           
           echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
           
-      - name: Check Terraform plan exit code
+      - name: Check OpenTofu plan exit code
         if: steps.tf_plan.conclusion == 'success' || steps.tf_plan.conclusion == 'failure'
         env:
-          terraform_exit_code: "${{ steps.tf_plan.outputs.terraform_exit_code }}"
+          opentofu_exit_code: "${{ steps.tf_plan.outputs.opentofu_exit_code }}"
         run: |
           # Separate step required otherwise GitHub will exit on non-zero exit code.
-          if [ $terraform_exit_code -eq 1 ]; then
-            echo "Terraform encountered an error. Exiting workflow."
+          if [ $opentofu_exit_code -eq 1 ]; then
+            echo "OpenTofu encountered an error. Exiting workflow."
             exit 1
           fi
 
@@ -412,7 +412,7 @@ jobs:
 
           cat updated_matrix.json
 
-      - name: Encrypt Terraform plan
+      - name: Encrypt OpenTofu plan
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         working-directory: "${{ matrix.stack.directory }}"
@@ -422,7 +422,7 @@ jobs:
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
 
-      - name: Upload Terraform Plan and matrix
+      - name: Upload OpenTofu Plan and matrix
         uses: actions/upload-artifact@v4
         if: ${{ inputs.upload_plan }}
         with:
@@ -434,32 +434,32 @@ jobs:
           compression-level: 1
           retention-days: 1
   
-      - name: Terraform Destructive Actions Check
+      - name: OpenTofu Destructive Actions Check
         working-directory: "${{ matrix.stack.directory }}"
         if: >-
           ${{ ( inputs.destructive_action_check ||
             inputs.environment_name == 'pre' || 
             inputs.environment_name == 'prd' ) &&
-            inputs.terraform_action != 'destroy' &&
+            inputs.opentofu_action != 'destroy' &&
             steps.state_empty.outputs.skip_workflow == 'false' }}
         run: |
-          delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
+          delete_count=$(tofu show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
 
           if [[ "$delete_count" -gt "0" ]]; then
             echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Terraform Apply
+      - name: OpenTofu Apply
         if: >-
-          ${{ inputs.execute_terraform_plan &&
+          ${{ inputs.execute_opentofu_plan &&
           steps.state_empty.outputs.skip_workflow == 'false' }}
         working-directory: "${{ matrix.stack.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          OPENTOFU_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: "${{ secrets.GH_TOKEN }}"
-        run: terraform apply -lock-timeout=5m -no-color -input=false tfplan
+        run: tofu apply -lock-timeout=5m -no-color -input=false tfplan
