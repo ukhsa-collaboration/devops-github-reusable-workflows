@@ -338,12 +338,15 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TERRAFORM_ACTION: ${{ inputs.terraform_action }}
+          SKIP_DESTROY: "${{ matrix.stack.skip_when_destroying }}"
         run: |
           # Required, otherwise GitHub will exit immediately when the tf plan exit code is non-zero (2 = changes)
           set +e 
 
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
-            terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            if [[ "$SKIP_DESTROY" == "False" ]]; then
+              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            fi
           else
             terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
           fi
