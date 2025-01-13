@@ -114,7 +114,7 @@ jobs:
       - name: Export variables
         run: | 
           echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
-          echo ${{ matrix.stack }}
+          echo ${{ toJSON(matrix.stack) }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
