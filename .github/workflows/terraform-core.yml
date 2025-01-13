@@ -14,12 +14,12 @@ on:
         required: false
         type: boolean
         default: false
-      execute_opentofu_plan:
+      execute_terraform_plan:
         required: false
         type: boolean
         default: false
         description: "Whether or not to apply the OpenTofu code. Set to false for a plan only."
-      opentofu_action:
+      terraform_action:
         required: false
         type: string
         default: "apply"
