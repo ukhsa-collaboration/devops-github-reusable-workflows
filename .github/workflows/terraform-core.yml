@@ -112,7 +112,8 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
       - name: Export variables
-        run: echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
+        run: | 
+          echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -158,7 +159,7 @@ jobs:
           done
 
       - name: Find Terraform version
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.8.0
         id: terraform_version
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
@@ -338,12 +339,15 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TERRAFORM_ACTION: ${{ inputs.terraform_action }}
+          SKIP_DESTROY: "${{ matrix.stack.skip_when_destroying }}"
         run: |
           # Required, otherwise GitHub will exit immediately when the tf plan exit code is non-zero (2 = changes)
           set +e 
 
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
-            terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            if [[ "$SKIP_DESTROY" == "false" ]]; then
+              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            fi
           else
             terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
           fi
@@ -402,11 +406,13 @@ jobs:
             --argjson runner_label '${{ toJSON(matrix.stack.runner_label) }}' \
             --argjson planned_changes "$planned_changes" \
             --argjson order "${{ matrix.stack.order }}" \
+            --argjson skip_when_destroying "${{ matrix.stack.skip_when_destroying }}" \
             '{
               directory: $dir,
               runner_label: ($runner_label | if type=="array" then . else [.] end),
               planned_changes: $planned_changes,
-              order: $order
+              order: $order,
+              skip_when_destroying: $skip_when_destroying
             }' \
             > updated_matrix.json
 
