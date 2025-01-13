@@ -412,7 +412,8 @@ jobs:
               directory: $dir,
               runner_label: ($runner_label | if type=="array" then . else [.] end),
               planned_changes: $planned_changes,
-              order: $order
+              order: $order,
+              skip_when_destroying: $skip_when_destroying
             }' \
             > updated_matrix.json
 
