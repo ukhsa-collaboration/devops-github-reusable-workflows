@@ -176,7 +176,7 @@ jobs:
         if: ${{ !contains(matrix.stack.runner_label, 'self-hosted') }}
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "${{ steps.opentofu_version.outputs.tf_version }}"
+          tofu_version: 1.9.0
 
       - name: Determine Backend Type
         working-directory: "${{ matrix.stack.directory }}"
