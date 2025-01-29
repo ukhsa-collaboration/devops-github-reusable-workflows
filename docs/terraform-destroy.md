@@ -26,3 +26,5 @@ This workflow facilitates the destruction of Terraform-managed resources, design
 `TF_MODULES_SSH_DEPLOY_KEY` (optional): SSH key to clone Terraform modules as part of initialisation.
 
 `REPO_SSH_DEPLOY_KEY` (optional): SSH key to checkout private repositories with remote Terraform configurations.
+
+`TF_PLAN_ENCRYPTION_PASSPHRASE`: The passphrase used to encrypt the TF plan artefact.
