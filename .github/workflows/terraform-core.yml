@@ -58,6 +58,11 @@ on:
         type: string
         default: "3.12"
         description: "The version of python required when building packages via Terraform"
+      artefact_path:
+        required: false
+        type: string
+        default: ""
+        description: "If there are artefacts created from data sources, specify the path from the TF stack dir here so they are uploaded before applying"
     
     secrets:
       AWS_ROLE_NAME:
@@ -447,6 +452,7 @@ jobs:
           path: |
             ${{ matrix.stack.directory }}/tfplan.gpg
             ${{ matrix.stack.directory }}/updated_matrix.json
+            ${{ matrix.stack.directory }}/${{ inputs.artefact_path }}
           if-no-files-found: warn
           compression-level: 1
           retention-days: 1

@@ -37,6 +37,11 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+      artefact_path:
+        required: false
+        type: string
+        default: ""
+        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before applying"
   
     secrets:
       AWS_ROLE_NAME:
@@ -148,6 +153,7 @@ jobs:
       upload_plan: true
       download_existing_plan: false
       python_version: ${{ inputs.python_version }}
+      artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
 
   approve:
@@ -231,6 +237,7 @@ jobs:
       upload_plan: false
       download_existing_plan: true
       python_version: ${{ inputs.python_version }}
+      artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
 
   # update-deployment:
