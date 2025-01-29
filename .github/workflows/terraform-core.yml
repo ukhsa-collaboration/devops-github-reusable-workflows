@@ -53,6 +53,11 @@ on:
         type: boolean
         default: false
         description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+        description: "The version of python required when building packages via Terraform"
     
     secrets:
       AWS_ROLE_NAME:
@@ -110,6 +115,11 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
 
       - name: Export variables
         run: | 

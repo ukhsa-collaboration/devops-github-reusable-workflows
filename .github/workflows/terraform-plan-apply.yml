@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+        description: "The version of python required when building packages via Terraform"
       repo:
         required: false
         type: string
@@ -142,6 +147,7 @@ jobs:
       execute_terraform_plan: false
       upload_plan: true
       download_existing_plan: false
+      python_version: ${{ inputs.python_version }}
     secrets: inherit
 
   approve:
@@ -224,6 +230,7 @@ jobs:
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
       upload_plan: false
       download_existing_plan: true
+      python_version: ${{ inputs.python_version }}
     secrets: inherit
 
   # update-deployment:
