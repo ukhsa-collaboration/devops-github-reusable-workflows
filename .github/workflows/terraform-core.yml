@@ -446,7 +446,7 @@ jobs:
 
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
-        if: ${{ inputs.upload_plan && steps.encrypt_plan.conclusion != 'skipped' }}
+        if: ${{ inputs.upload_plan }}
         with:
           name: "${{ env.state_name }}-artefacts"
           path: |
