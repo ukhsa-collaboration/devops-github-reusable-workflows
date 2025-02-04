@@ -126,6 +126,8 @@ jobs:
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         run: |
+          pwd
+          ls -lah .
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
