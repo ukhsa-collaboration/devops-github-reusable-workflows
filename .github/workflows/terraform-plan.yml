@@ -122,6 +122,8 @@ jobs:
 
       - name: Decrypt Terraform Plan
         working-directory: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}/"
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
