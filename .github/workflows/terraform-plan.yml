@@ -116,12 +116,13 @@ jobs:
           echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_OUTPUT
 
       - uses: actions/download-artifact@v4
+        id: download
         with:
           name: "${{ steps.variables.outputs.state_name }}-${{ inputs.environment_name }}-artefacts"
-          path: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}/"
+          path: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}"
 
       - name: Decrypt Terraform Plan
-        working-directory: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}/"
+        working-directory: ${{ steps.download.outputs.download-path }}
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         run: |
