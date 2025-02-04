@@ -138,15 +138,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           script: |
+            const core = require('@actions/core');
             const fs = require('fs');
             const path = require('path');
+
+            const environment = "${{ inputs.environment_name }}";
+            const stack = "${{ steps.variables.outputs.state_name }}";
 
             try {
               const issue_number = context.payload.pull_request.number;
               const owner = context.repo.owner;
               const repo = context.repo.repo;
-              const environment = "${{ inputs.environment_name }}";
-              const stack = "${{ steps.variables.outputs.state_name }}";
               const commentIdentifier = `<!-- planComment-${environment}-${stack} -->`;
               const filePath = path.join(process.env.GITHUB_WORKSPACE, environment, stack, 'tfplan.json');
 
@@ -159,17 +161,14 @@ jobs:
 
               const fileContent = fs.readFileSync(filePath, 'utf8');
 
-              // Fetch all comments in the PR
               const comments = await github.rest.issues.listComments({
                 owner,
                 repo,
                 issue_number,
               });
 
-              // Check if there's an existing comment with our unique identifier
               const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
 
-              // Format the comment with a collapsible section
               const fullCommentBody = `
               ### 🛠 Terraform Plan Output (${environment.toUpperCase()})  
               Click below to expand the Terraform plan results.
