@@ -129,14 +129,6 @@ jobs:
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
-          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan tfplan.gpg
-
-      - name: Display Terraform Plan
-        working-directory: ${{ steps.download.outputs.download-path }}
-        env:
-          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
-        run: |
-          terraform show -no-color -json tfplan
 
       - name: Comment plan on PR
         uses: actions/github-script@v7
