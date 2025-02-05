@@ -80,7 +80,7 @@ jobs:
       - uses: actions/download-artifact@v4
         id: download_plan
         with:
-          name: "${{ env.state_name }}-artefacts"
+          name: "${{ env.state_name }}-${{ inputs.environment_name}}-artefacts"
           path: ${{ matrix.stack.directory }}
 
       - name: Deep SAST Scan Terraform code
