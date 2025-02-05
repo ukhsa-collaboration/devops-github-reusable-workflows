@@ -53,6 +53,16 @@ on:
         type: boolean
         default: false
         description: "Download an artifact containing an existing OpenTofu plan created by a previous run. Incompatible with upload_plan"
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+        description: "The version of python required when building packages via Terraform"
+      artefact_path:
+        required: false
+        type: string
+        default: "nonexistentfile.txt"
+        description: "If there are artefacts created from data sources, specify the path from the TF stack dir here so they are uploaded before applying"
     
     secrets:
       AWS_ROLE_NAME:
@@ -110,6 +120,11 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
 
       - name: Export variables
         run: | 
@@ -312,7 +327,7 @@ jobs:
         id: download_plan
         if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.state_empty == 'false' )
         with:
-          name: "${{ env.state_name }}-artefacts"
+          name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
 
       - name: Decrypt OpenTofu plan
@@ -422,20 +437,26 @@ jobs:
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         working-directory: "${{ matrix.stack.directory }}"
-        if: ${{ inputs.upload_plan }}
+        if: ${{ inputs.upload_plan && steps.tf_plan.conclusion != 'skipped' }}
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
+          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
+
+          # Delete unencrypted plan files incase of accidental upload.
+          rm tfplan tfplan.json
 
       - name: Upload OpenTofu Plan and matrix
         uses: actions/upload-artifact@v4
         if: ${{ inputs.upload_plan }}
         with:
-          name: "${{ env.state_name }}-artefacts"
+          name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: |
             ${{ matrix.stack.directory }}/tfplan.gpg
+            ${{ matrix.stack.directory }}/tfplan.json.gpg
             ${{ matrix.stack.directory }}/updated_matrix.json
+            ${{ matrix.stack.directory }}/${{ inputs.artefact_path }}
           if-no-files-found: warn
           compression-level: 1
           retention-days: 1
