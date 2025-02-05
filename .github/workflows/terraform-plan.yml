@@ -196,7 +196,7 @@ jobs:
               if (summary.replace.length > 0) {
                 summaryText += `🟣 **Resources to be replaced:**\n${summary.replace.map(addr => `- ${addr}`).join("\n")}\n\n`;
               }
-              if (summary.summary.update.length == 0 && summary.update.length == 0 && summary.create.length == 0 && summary.replace.length == 0) {
+              if (summary.update.length == 0 && summary.delete.length == 0 && summary.create.length == 0 && summary.replace.length == 0) {
                 summaryText += `👌 **No resources will be changed**\n\n`;
               }
 
