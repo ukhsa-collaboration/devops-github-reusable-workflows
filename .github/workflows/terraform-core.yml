@@ -322,7 +322,7 @@ jobs:
         id: download_plan
         if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.state_empty == 'false' )
         with:
-          name: "${{ env.state_name }}--${{ inputs.environment_name }}-artefacts"
+          name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
 
       - name: Decrypt Terraform plan
