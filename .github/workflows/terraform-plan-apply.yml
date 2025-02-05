@@ -41,7 +41,7 @@ on:
         required: false
         type: string
         default: "nonexistentfile.txt"
-        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before" 
+        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before applying" 
   
     secrets:
       AWS_ROLE_NAME:
