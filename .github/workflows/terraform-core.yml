@@ -445,7 +445,7 @@ jobs:
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
 
-          # Delete unecrypted plan files incase of accidental upload.
+          # Delete unencrypted plan files incase of accidental upload.
           rm tfplan tfplan.json
 
       - name: Upload Terraform Plan and matrix
