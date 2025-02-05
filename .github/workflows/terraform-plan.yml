@@ -126,11 +126,17 @@ jobs:
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         run: |
-          pwd
-          ls -lah .
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
+          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan tfplan.gpg
+
+      - name: Display Terraform Plan
+        working-directory: ${{ steps.download.outputs.download-path }}
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          terraform show -no-color -json tfplan
 
       - name: Comment plan on PR
         uses: actions/github-script@v7
@@ -198,7 +204,10 @@ jobs:
               if (summary.replace.length > 0) {
                 summaryText += `🟣 **Resources to be replaced:**\n${summary.replace.map(addr => `- ${addr}`).join("\n")}\n\n`;
               }
-              
+              if (summary.summary.update.length == 0 && summary.update.length == 0 && summary.create.length == 0 && summary.replace.length == 0) {
+                summaryText += `👌 **No resources will be changed**\n\n`;
+              }
+
               // Append the comment identifier so that subsequent runs can update the correct comment.
               summaryText += commentIdentifier;
 
