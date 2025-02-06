@@ -149,7 +149,6 @@ jobs:
     uses: ./.github/workflows/terraform-core.yml
     needs:
       - check
-      - filter_matrix
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
