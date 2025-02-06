@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
-      skip_remaining: ${{ steps.check_empty.outputs.skip_remaining }}
+      skip_remaining: ${{ steps.check_matrix.outputs.skip_remaining }}
     steps:
       - name: Filter Stacks
         env:
