@@ -174,7 +174,7 @@ jobs:
           done
 
       - name: Find Terraform version
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.8.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.0
         id: terraform_version
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
@@ -445,7 +445,7 @@ jobs:
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
 
-          # Delete unencrypted plan files incase of accidental upload.
+          # Delete unencrypted plan files to prevent accidental upload.
           rm tfplan tfplan.json
 
       - name: Upload Terraform Plan and matrix
