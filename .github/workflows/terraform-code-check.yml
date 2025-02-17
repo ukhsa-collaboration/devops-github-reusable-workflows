@@ -51,7 +51,7 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
   
       - name: Create pending check
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.9.0
         id: create_check
         with:
           name: "Terraform Checks - ${{ inputs.stack_root_directory }}"
@@ -66,7 +66,7 @@ jobs:
             | Checkov Scan       |  :hourglass_flowing_sand: Pending  |
 
       - name: Find Terraform version
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.0
         id: terraform_version
         with:
           tf_file: "${{ inputs.stack_root_directory }}/terraform.tf"
@@ -87,14 +87,14 @@ jobs:
       - name: Terraform Linting with tflint
         id: tf_lint
         continue-on-error: true
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-tflint@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-tflint@v0.9.0
         with:
           tf_directory: ${{ inputs.stack_root_directory }}
           scan_modules: ${{ inputs.tflint_module_scan }}
 
       - name: SAST Scan Terraform code
         id: tf_scan
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.9.0
         with:
           scan_directory: ${{ inputs.stack_root_directory }}
           scan_type: "${{ inputs.checkov_deep_scan && 'deep' || 'light' }}"
@@ -121,7 +121,7 @@ jobs:
           echo "tf_scan=$tf_scan" >> $GITHUB_ENV
 
       - name: Update check with result
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.9.0
         with:
           name: "Terraform Checks - ${{ inputs.stack_root_directory }}"
           status: "completed"
