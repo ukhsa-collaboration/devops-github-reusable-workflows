@@ -1,0 +1,233 @@
+name: "[CI] Plan Terraform Stacks"
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        required: false
+        default: dev
+        type: string
+      aws_region:
+        required: false
+        default: eu-west-2
+        type: string
+      repo:
+        required: false
+        type: string
+        default: ${{ github.repository }}
+      ref:
+        required: false
+        type: string
+        default: ${{ github.ref }}
+
+    secrets:
+      AWS_ROLE_NAME:
+        required: false
+      AWS_ACCOUNT_ID:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      TF_MODULES_SSH_DEPLOY_KEY:
+        required: false
+      REPO_SSH_DEPLOY_KEY:
+        required: false
+      TF_PLAN_ENCRYPTION_PASSPHRASE:
+        required: true
+        description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
+  
+
+jobs:
+  define_matrix:
+    name: Define directory matrix for build
+    runs-on: ubuntu-latest
+    outputs:
+      stack_config: "${{ steps.stack_config.outputs.json_directory_list }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+      - name: Determine order to run Terraform stacks
+        uses: >-
+          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.9.0
+        id: stack_config
+
+  filter_matrix:
+    name: Filter matrix for only planned changes
+    needs:
+      - define_matrix
+    runs-on: ubuntu-latest
+    outputs:
+      filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
+    steps:
+      - name: Filter Stacks
+        env:
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+        id: filter_matrix
+        run: |
+          echo '${{ needs.define_matrix.outputs.stack_config }}' > initial_matrix.json
+          
+          filtered_matrix=$(jq -c --arg env_name "${ENVIRONMENT_NAME}" '
+          [ .[]
+            | select(.planned_changes == true)
+            | if .runner_label == "self-hosted"
+              then .runner_label = ["self-hosted", $env_name]
+              else .
+              end
+          ]
+          ' initial_matrix.json)
+
+          echo "Filtered Matrix: $filtered_matrix"
+          echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
+
+  plan:
+    name: Plan Terraform
+    uses: ./.github/workflows/terraform-core.yml
+    needs:
+      - filter_matrix
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      aws_region: ${{ inputs.aws_region }}
+      repo: ${{ inputs.repo }}
+      ref:  ${{ inputs.ref }}
+      stack_config: "${{ needs.filter_matrix.outputs.filtered_matrix }}"
+      terraform_action: "apply"
+      execute_terraform_plan: false
+      upload_plan: true
+      download_existing_plan: false
+    secrets: inherit
+
+  comment:
+    name: Comment plan on Pull Request
+    if: github.event_name == 'pull_request'
+    needs:
+      - plan
+      - filter_matrix
+    runs-on: "${{ matrix.stack.runner_label }}"
+    strategy:
+      matrix:
+        stack: "${{ fromJSON(needs.filter_matrix.outputs.filtered_matrix) }}"
+    steps:
+      - name: Export variables
+        id: variables
+        run: | 
+          echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v4
+        id: download
+        with:
+          name: "${{ steps.variables.outputs.state_name }}-${{ inputs.environment_name }}-artefacts"
+          path: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}"
+
+      - name: Decrypt Terraform Plan
+        working-directory: ${{ steps.download.outputs.download-path }}
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const environment = "${{ inputs.environment_name }}";
+            const stack = "${{ steps.variables.outputs.state_name }}";
+
+            try {
+              const issue_number = context.payload.pull_request.number;
+              const owner = context.repo.owner;
+              const repo = context.repo.repo;
+              const commentIdentifier = `<!-- planComment-${environment}-${stack} -->`;
+              const filePath = path.join(process.env.GITHUB_WORKSPACE, environment, stack, 'tfplan.json');
+
+              if (!fs.existsSync(filePath)) {
+                console.log(`❌ Terraform plan file not found: ${filePath}`);
+                core.setFailed('Terraform plan file not found.');
+                return;
+              }
+
+              const fileContent = fs.readFileSync(filePath, 'utf8');
+
+              let planJson;
+              try {
+                planJson = JSON.parse(fileContent);
+              } catch (parseError) {
+                core.setFailed(`Failed to parse tfplan.json: ${parseError.message}`);
+                return;
+              }
+
+              const summary = { create: [], update: [], delete: [], replace: [] };
+
+              const changes = planJson.resource_changes || [];
+              changes.forEach(change => {
+                const address = change.address;
+                const actions = change.change.actions;
+                // If the actions include both delete and create, it's a replacement.
+                if (actions.includes("delete") && actions.includes("create")) {
+                  summary.replace.push(address);
+                } else if (actions.includes("create")) {
+                  summary.create.push(address);
+                } else if (actions.includes("update")) {
+                  summary.update.push(address);
+                } else if (actions.includes("delete")) {
+                  summary.delete.push(address);
+                }
+              });
+
+              let summaryText = `### Terraform Plan Summary (${environment.toUpperCase()}/${stack.toUpperCase()})\n\n`;
+              if (summary.delete.length > 0) {
+                summaryText += `🔴 **Resources to be destroyed:**\n${summary.delete.map(addr => `- ${addr}`).join("\n")}\n\n`;
+              }
+              if (summary.update.length > 0) {
+                summaryText += `🟡 **Resources to be updated:**\n${summary.update.map(addr => `- ${addr}`).join("\n")}\n\n`;
+              }
+              if (summary.create.length > 0) {
+                summaryText += `🟢 **Resources to be created:**\n${summary.create.map(addr => `- ${addr}`).join("\n")}\n\n`;
+              }
+              if (summary.replace.length > 0) {
+                summaryText += `🟣 **Resources to be replaced:**\n${summary.replace.map(addr => `- ${addr}`).join("\n")}\n\n`;
+              }
+              if (summary.update.length == 0 && summary.delete.length == 0 && summary.create.length == 0 && summary.replace.length == 0) {
+                summaryText += `👌 **No resources will be changed**\n\n`;
+              }
+
+              // Append the comment identifier so that subsequent runs can update the correct comment.
+              summaryText += commentIdentifier;
+
+              const comments = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number,
+              });
+
+              const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
+
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: botComment.id,
+                  body: summaryText,
+                });
+                console.log(`✅ Updated existing PR comment for environment: ${environment} / stack: ${stack}`);
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body: summaryText,
+                });
+                console.log(`✅ Created a new PR comment for environment: ${environment} / stack: ${stack}`);
+              }
+            } catch (error) {
+              core.setFailed(`🚨 Failed to comment on PR for environment ${environment}: ${error.message}`);
+            }

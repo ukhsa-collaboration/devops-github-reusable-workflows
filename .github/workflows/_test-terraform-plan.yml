@@ -1,0 +1,27 @@
+name: "Test Plan Terraform stacks"
+# Regression testing to try and catch and breaking changes
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/terraform-plan.yml
+      - .github/workflows/_test-terraform-plan.yml
+      - .github/workflows/terraform-core.yml
+      - .github/workflows/terraform-code-check.yml
+
+jobs:
+  plan_tf_stacks_regression_test:
+    name: Test using devops-terraform-example-project@main
+    uses: ./.github/workflows/terraform-plan.yml
+    with:
+      repo: ukhsa-collaboration/devops-terraform-example-project
+      ref: "main"
+    permissions: write-all
+    secrets:
+      REPO_SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      AWS_ACCOUNT_ID: ${{ secrets.TEST_AWS_ACCOUNT_ID }}
+      AWS_ROLE_NAME: ${{ secrets.TEST_AWS_ROLE_NAME }}
+      TF_MODULES_SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY }}
+      TF_PLAN_ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}

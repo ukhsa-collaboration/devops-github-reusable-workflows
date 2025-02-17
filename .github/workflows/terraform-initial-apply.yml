@@ -87,7 +87,7 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
-          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.8.0
+          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.9.0
         id: stack_config
 
   filter_matrix:
@@ -163,4 +163,15 @@ jobs:
       download_existing_plan: false
       python_version: ${{ inputs.python_version }}
       artefact_path: ${{ inputs.artefact_path }}
+    secrets: inherit
+
+  post-deployment-qa-checks:
+    name: Run post deployment QA checks.
+    uses: ./.github/workflows/terraform-post-deployment-qa.yml
+    needs: 
+      - apply
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      aws_region: ${{ inputs.aws_region }}
+      stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
     secrets: inherit
