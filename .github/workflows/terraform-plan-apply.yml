@@ -72,8 +72,7 @@ on:
       TF_PLAN_ENCRYPTION_PASSPHRASE:
         required: true
         description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
-  
-        
+         
 jobs:
   define_matrix:
     name: Define directory matrix for build
