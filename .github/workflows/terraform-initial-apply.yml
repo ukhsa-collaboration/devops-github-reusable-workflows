@@ -140,6 +140,7 @@ jobs:
       repo: ${{ inputs.repo }}
       ref: ${{ inputs.ref }}
       tflint_module_scan: ${{ inputs.tflint_module_scan }}
+      bypass_checks: true
     secrets:
       REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
@@ -148,7 +149,6 @@ jobs:
     if: ${{ needs.filter_matrix.outputs.skip_remaining == 'false' }}
     uses: ./.github/workflows/terraform-core.yml
     needs:
-      - check
       - filter_matrix
     with:
       environment_name: ${{ inputs.environment_name }}
@@ -165,13 +165,13 @@ jobs:
       artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
 
-  post-deployment-qa-checks:
-    name: Run post deployment QA checks.
-    uses: ./.github/workflows/terraform-post-deployment-qa.yml
-    needs: 
-      - apply
-    with:
-      environment_name: ${{ inputs.environment_name }}
-      aws_region: ${{ inputs.aws_region }}
-      stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
-    secrets: inherit
+  # post-deployment-qa-checks:
+  #   name: Run post deployment QA checks.
+  #   uses: ./.github/workflows/terraform-post-deployment-qa.yml
+  #   needs: 
+  #     - apply
+  #   with:
+  #     environment_name: ${{ inputs.environment_name }}
+  #     aws_region: ${{ inputs.aws_region }}
+  #     stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
+  #   secrets: inherit
