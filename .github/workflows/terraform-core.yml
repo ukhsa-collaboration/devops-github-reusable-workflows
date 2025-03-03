@@ -462,21 +462,6 @@ jobs:
           compression-level: 1
           retention-days: 1
   
-      - name: Terraform Destructive Actions Check
-        working-directory: "${{ matrix.stack.directory }}"
-        if: >-
-          ${{ ( inputs.destructive_action_check ||
-            inputs.environment_name == 'pre' || 
-            inputs.environment_name == 'prd' ) &&
-            inputs.terraform_action != 'destroy' &&
-            steps.state_empty.outputs.skip_workflow == 'false' }}
-        run: |
-          delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
-
-          if [[ "$delete_count" -gt "0" ]]; then
-            echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_STEP_SUMMARY
-          fi
-
       - name: Terraform Apply
         if: >-
           ${{ inputs.execute_terraform_plan &&

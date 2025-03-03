@@ -156,34 +156,10 @@ jobs:
       artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
 
-  approve:
-    name: Approve deployment
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment_name }}
-    if: ${{ inputs.execute_terraform_plan }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    needs:
-      - check
-      - plan
-      - filter_matrix_1
-    steps:
-      - name: "Check approval requirement"
-        run: |
-          protection_rules=$(gh api -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          /repos/${{ github.repository }}/environments/${{ inputs.environment_name }} \
-          | jq -r '.protection_rules | length')
-
-          if [[ $protection_rules == "0" ]]; then
-            echo "Environment ${{ inputs.environment_name }} doesn't require manual approval. Automatically proceeding..."
-          fi
-
   filter_matrix_2:
     name: Filter matrix for only planned changes
     needs:
       - plan
-      - approve
     runs-on: ubuntu-latest
     outputs:
       filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
@@ -223,7 +199,6 @@ jobs:
     if: ${{ needs.filter_matrix_2.outputs.skip_remaining == 'false' }}
     uses: ./.github/workflows/terraform-core.yml
     needs:
-      - approve
       - filter_matrix_2
     with:
       environment_name: ${{ inputs.environment_name }}
