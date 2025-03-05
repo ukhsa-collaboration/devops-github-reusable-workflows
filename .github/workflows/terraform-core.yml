@@ -362,6 +362,11 @@ jobs:
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
             if [[ "$SKIP_DESTROY" == "false" ]]; then
               terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            else
+              # There's no need to plan because we're skipping this stack.
+              echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
+              echo "planned_changes=false" >> $GITHUB_OUTPUT
+              exit 0
             fi
           else
             terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
