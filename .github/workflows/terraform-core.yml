@@ -224,14 +224,25 @@ jobs:
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.stack.directory }}"
+          TF_VERSION: "${{ steps.terraform_version.outputs.tf_version }}"
         run: |
           s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
-          dynamodb_table=${AWS_REGION}-state-locks
           s3_bucket=${AWS_ACCOUNT_ID}-${AWS_REGION}-state
-          terraform init \
-            -backend-config=dynamodb_table="${dynamodb_table}" \
+          # `dynamodb_table` is deprecated by Terraform from verison 1.11.0 . Use the new use_lockfile
+          # flag if the Terraform version supports it.
+          # TODO: Remove this conditional in future. 
+          if [ "$(printf '%s\n' "1.11.0" "$TF_VERSION" | sort -V | head -n1)" = "1.11.0" ]; then
+            terraform init \
+            -backend-config=use_lockfile=true \
             -backend-config=bucket="${s3_bucket}" \
             -backend-config=key="${s3_key}"
+          else
+            dynamodb_table=${AWS_REGION}-state-locks
+            terraform init \
+              -backend-config=dynamodb_table="${dynamodb_table}" \
+              -backend-config=bucket="${s3_bucket}" \
+              -backend-config=key="${s3_key}"
+          fi
 
       - name: Terraform Init with Azure Backend
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
