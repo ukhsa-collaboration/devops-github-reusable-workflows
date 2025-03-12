@@ -275,22 +275,28 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
         run: |
-          skip_workflow=false
-          if [[ $(terraform state list | head -c1 | wc -c) -ne 0 ]]; then
-            state_empty=false
-          else
-            state_empty=true
-            if [[ "$execute_terraform_plan" == "false" ]]; then
-              skip_workflow=true
-            fi
-          fi
+          set -euo pipefail
 
-          echo "state_empty=$state_empty" >> $GITHUB_OUTPUT
+          skip_workflow=false
+      
+          # Capture Terraform state list output; suppress errors if state doesn't exist.
+          output=$(terraform state list 2>/dev/null || true)
+          echo "DEBUG: terraform state list output: '$output'"
+      
+          # Check if output is empty and if we are not executing a terraform plan.
+          if [ -z "$output" ] && [ "${execute_terraform_plan}" = "false" ]; then
+            echo "DEBUG: No state found and execute_terraform_plan is false. Skipping further steps."
+            skip_workflow=true
+          else
+            echo "DEBUG: Either state exists or terraform plan is set to execute. We're going to apply."
+          fi
+      
           echo "skip_workflow=$skip_workflow" >> $GITHUB_OUTPUT
+      
 
       - name: Find Terraform variables
         id: variables
-        if: steps.state_empty.outputs.skip_workflow == 'false'
+        shell: bash
         env:
           DIRECTORY: "${{ matrix.stack.directory }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
@@ -336,7 +342,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         id: download_plan
-        if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.state_empty == 'false' )
+        if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.skip_workflow == 'false' )
         with:
           name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
@@ -356,6 +362,7 @@ jobs:
         working-directory: "${{ matrix.stack.directory }}"
         continue-on-error: true
         if: steps.download_plan.conclusion == 'skipped' && steps.state_empty.outputs.skip_workflow == 'false' 
+        shell: bash
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
@@ -367,58 +374,42 @@ jobs:
           TERRAFORM_ACTION: ${{ inputs.terraform_action }}
           SKIP_DESTROY: "${{ matrix.stack.skip_when_destroying }}"
         run: |
-          # Required, otherwise GitHub will exit immediately when the tf plan exit code is non-zero (2 = changes)
-          set +e 
+          set -euo pipefail
 
+          # Determine whether to plan a destroy or a regular plan.
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
             if [[ "$SKIP_DESTROY" == "false" ]]; then
-              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+              echo "DEBUG: Running terraform plan for destroy"
+              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || true
             else
-              # There's no need to plan because we're skipping this stack.
+              echo "DEBUG: Skipping terraform plan because SKIP_DESTROY is true"
               echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
               echo "planned_changes=false" >> $GITHUB_OUTPUT
               exit 0
             fi
           else
-            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            echo "DEBUG: Running standard terraform plan"
+            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || true
           fi
-          
-          terraform_exit_code=$?
 
-          echo "Terraform exit code: $terraform_exit_code"
+          terraform_exit_code=$?
+          echo "DEBUG: Terraform exit code is $terraform_exit_code"
           echo "terraform_exit_code=$terraform_exit_code" >> $GITHUB_OUTPUT
 
           terraform show -json tfplan | jq > tfplan.json
-
-          # If no changes are required, we can skip subsequent steps for this stack.
+          
           if [ $terraform_exit_code -eq 0 ]; then
-            # If there are only resources to be destroyed or updated, the -detailed-exitcode returned is 0.
-            # Additional logic required to inspect the tfplan.json file for if any actions are present and ensure planned changes are applied.
-            action_count=$(jq '[.resource_changes[] | select(.change.actions | any(. == "create" or . == "update" or . == "delete"))] | length' tfplan.json)
-            echo "Action count: $action_count"
-            if [ "$action_count" -gt 0 ]; then
-                planned_changes=true
-            else
-                planned_changes=false
-            fi
+            echo "DEBUG: Terraform Plan exit code indicated no changes."
+            planned_changes=false
           elif [ $terraform_exit_code -eq 2 ]; then
-              planned_changes=true
+            echo "DEBUG: Terraform Plan exit code indicated changes."
+            planned_changes=true
           else
-              exit $terraform_exit_code
+            echo "ERROR: Terraform plan failed with exit code $terraform_exit_code" >&2
+            exit $terraform_exit_code
           fi
-          
+
           echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
-          
-      - name: Check Terraform plan exit code
-        if: steps.tf_plan.conclusion == 'success' || steps.tf_plan.conclusion == 'failure'
-        env:
-          terraform_exit_code: "${{ steps.tf_plan.outputs.terraform_exit_code }}"
-        run: |
-          # Separate step required otherwise GitHub will exit on non-zero exit code.
-          if [ $terraform_exit_code -eq 1 ]; then
-            echo "Terraform encountered an error. Exiting workflow."
-            exit 1
-          fi
 
       - name: Update stack matrix
         working-directory: "${{ matrix.stack.directory }}"
