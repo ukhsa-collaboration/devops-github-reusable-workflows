@@ -96,7 +96,6 @@ jobs:
       terraform_action: "apply"
       execute_terraform_plan: false
       upload_plan: true
-      download_existing_plan: false
     secrets: inherit
 
   comment:
