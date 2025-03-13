@@ -386,6 +386,21 @@ jobs:
             > updated_matrix.json
 
           cat updated_matrix.json
+  
+      - name: Terraform Apply
+        # Ensure we're not destroying stacks where 'skip_on_destroy' is true.
+        if: ${{ inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == false }}
+        working-directory: "${{ matrix.stack.directory }}"
+        env:
+          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
+          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+          GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+          TERRAFORM_ARG_NO_REFRESH: ${{ inputs.terraform_arg_no_refresh }}
+        run: terraform apply ${TERRAFORM_ARGS} tfplan
 
       - name: Encrypt Terraform plan
         id: encrypt_plan
@@ -416,18 +431,3 @@ jobs:
           if-no-files-found: warn
           compression-level: 1
           retention-days: 1
-  
-      - name: Terraform Apply
-        # Ensure we're not destroying stacks where 'skip_on_destroy' is true.
-        if: ${{ inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == false }}
-        working-directory: "${{ matrix.stack.directory }}"
-        env:
-          ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-          TERRAFORM_VARIABLES: "${{ steps.variables.outputs.tf_vars }}"
-          ARM_USE_OIDC: true
-          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-          GH_TOKEN: "${{ secrets.GH_TOKEN }}"
-          TERRAFORM_ARG_NO_REFRESH: ${{ inputs.terraform_arg_no_refresh }}
-        run: terraform apply ${TERRAFORM_ARGS} tfplan
