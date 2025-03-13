@@ -10,10 +10,6 @@ on:
         required: false
         default: eu-west-2
         type: string
-      destructive_action_check:
-        required: false
-        type: boolean
-        default: false
       execute_terraform_plan:
         required: false
         type: boolean
@@ -33,6 +29,11 @@ on:
         description: "The maximum number of jobs to run at the same time. This should normally be 1 to avoid race conditions."
         type: number
         default: 1
+      terraform_arg_no_refresh:
+        required: false
+        description: "Whether or not to refresh Terraform state when running Terraform commands. Should be 'true' (string, not boolean) for scheduled drift detection workflows."
+        type: string
+        default: "false"
       repo:
         required: false
         type: string
@@ -47,12 +48,7 @@ on:
         required: false
         type: boolean
         default: false
-        description: "Create an artifact containing the resulting Terraform plan. Incompatible with download_existing_plan"
-      download_existing_plan:
-        required: false
-        type: boolean
-        default: false
-        description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
+        description: "Create an artifact containing the resulting Terraform plan."
       python_version:
         required: false
         type: string
@@ -63,7 +59,6 @@ on:
         type: string
         default: "nonexistentfile.txt"
         description: "If there are artefacts created from data sources, specify the path from the TF stack dir here so they are uploaded before applying"
-    
     secrets:
       AWS_ROLE_NAME:
         required: false
@@ -100,6 +95,9 @@ on:
       TF_PLAN_ENCRYPTION_PASSPHRASE:
         required: true
         description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
+
+env:
+  TERRAFORM_ARGS: "-refresh=${{ inputs.terraform_arg_no_refresh }} -no-color -lock-timeout=5m -input=false"
 
 jobs:
   initialise:
@@ -179,6 +177,7 @@ jobs:
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
 
+      # TODO: Find out and document why we can't use setup-terraform on self-hosted runners. 
       - name: Setup Terraform for self-hosted runner
         if: ${{ contains(matrix.stack.runner_label, 'self-hosted') }}
         run: |
@@ -206,8 +205,7 @@ jobs:
           SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY != '' && secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}
           SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
         run: |
-          # Add SSH deploy key to ssh-agent to allow internal or private ukhsa-collaboration
-          # modules to be downloaded during terraform init.
+          # Add SSH deploy key to ssh-agent to allow Terraform modules from private repos to be downloaded during terraform init.
           if [ -n "$SSH_DEPLOY_KEY" ]; then
             mkdir -p ~/.ssh
             ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -279,36 +277,6 @@ jobs:
             -backend-config=key=$ENVIRONMENT_NAME/"$state_name"/terraform.tfstate \
             -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
 
-      - name: Check if the state file is empty
-        working-directory: "${{ matrix.stack.directory }}"
-        id: state_empty
-        shell: bash
-        env:
-          execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
-          ARM_USE_OIDC: true
-          ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-          ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-        run: |
-          set -euo pipefail
-
-          skip_workflow=false
-      
-          # Capture Terraform state list output; suppress errors if state doesn't exist.
-          output=$(terraform state list 2>/dev/null || true)
-          echo "DEBUG: terraform state list output: '$output'"
-      
-          # Check if output is empty and if we are not executing a terraform plan.
-          if [ -z "$output" ] && [ "${execute_terraform_plan}" = "false" ]; then
-            echo "DEBUG: No state found and execute_terraform_plan is false. Skipping further steps."
-            skip_workflow=true
-          else
-            echo "DEBUG: Either state exists or terraform plan is set to execute."
-          fi
-      
-          echo "skip_workflow=$skip_workflow" >> $GITHUB_OUTPUT
-      
-
       - name: Find Terraform variables
         id: variables
         shell: bash
@@ -319,32 +287,22 @@ jobs:
           find_app_var_files() {
             local dir=$1
             local tfvars=$(find ./$dir/tfvars/ -name "*${ENVIRONMENT_NAME}.tfvars" -print -quit)
-            local json=$(find ./$dir/tfvars/ -name "*${ENVIRONMENT_NAME}.tfvars.json" -print -quit)
-            
             if [[ -f "$tfvars" ]]; then
               echo "-var-file=$(readlink -f $tfvars)"
-            elif [[ -f "$json" ]]; then
-              echo "-var-file=$(readlink -f $json)"
             fi
           }
 
           find_env_var_files() {
             local tfvars="./environment/${ENVIRONMENT_NAME}.tfvars"
-            local json="./environment/${ENVIRONMENT_NAME}.tfvars.json"
             if [[ -f "$tfvars" ]]; then
               echo "-var-file=$(readlink -f $tfvars)"
-            elif [[ -f "$json" ]]; then
-              echo "-var-file=$(readlink -f $json)"
             fi
           }
 
           find_global_var_file() {
             local tfvars="globals.tfvars"
-            local json="globals.tfvars.json"
             if [[ -f "$tfvars" ]]; then
               echo "-var-file=$(readlink -f $tfvars)"
-            elif [[ -f "$json" ]]; then
-              echo "-var-file=$(readlink -f $json)"
             fi
           }
 
@@ -355,28 +313,9 @@ jobs:
 
           echo "tf_vars=$full_variable_flags" >> $GITHUB_OUTPUT
 
-      - uses: actions/download-artifact@v4
-        id: download_plan
-        if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.skip_workflow == 'false' )
-        with:
-          name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
-          path: ${{ matrix.stack.directory }}
-
-      - name: Decrypt Terraform plan
-        if: steps.download_plan.conclusion == 'success'
-        working-directory: "${{ matrix.stack.directory }}"
-        env:
-          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
-        run: |
-          pass_file=$(mktemp)
-          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan tfplan.gpg
-
       - name: Terraform Plan
         id: tf_plan
         working-directory: "${{ matrix.stack.directory }}"
-        continue-on-error: true
-        if: steps.download_plan.conclusion == 'skipped' && steps.state_empty.outputs.skip_workflow == 'false' 
         shell: bash
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
@@ -396,7 +335,7 @@ jobs:
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
             if [[ "$SKIP_DESTROY" == "false" ]]; then
               echo "DEBUG: Running terraform plan for destroy"
-              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
+              terraform plan ${TERRAFORM_ARGS} -destroy -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
             else
               echo "DEBUG: Skipping terraform plan because SKIP_DESTROY flag in this stack is true"
               echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
@@ -405,7 +344,7 @@ jobs:
             fi
           else
             echo "DEBUG: Running standard terraform plan"
-            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
+            terraform plan ${TERRAFORM_ARGS} -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
           fi
 
           echo "DEBUG: Terraform exit code is $terraform_exit_code"
@@ -429,19 +368,12 @@ jobs:
       - name: Update stack matrix
         working-directory: "${{ matrix.stack.directory }}"
         run: |
-          # If the tf_plan step was skipped because of no state, persist the stack configuration with planned_changes.
-          if [ "${{ steps.tf_plan.conclusion }}" == "skipped" ]; then
-            planned_changes="${{ matrix.stack.planned_changes }}"
-          else
-            planned_changes="${{ steps.tf_plan.outputs.planned_changes }}"
-          fi
-
           echo "runner_label is: ${{ matrix.stack.runner_label }}"
 
           jq -n \
             --arg dir "${{ matrix.stack.directory }}" \
             --argjson runner_label '${{ toJSON(matrix.stack.runner_label) }}' \
-            --argjson planned_changes "$planned_changes" \
+            --argjson planned_changes "${{ steps.tf_plan.outputs.planned_changes }}" \
             --argjson order "${{ matrix.stack.order }}" \
             --argjson skip_when_destroying "${{ matrix.stack.skip_when_destroying }}" \
             '{
@@ -467,7 +399,8 @@ jobs:
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
 
-          # Delete unencrypted plan files to prevent accidental upload.
+          # Delete unencrypted plan files so that they can't be accidentally uploaded by a
+          # an empty artefact_path input. 
           rm tfplan tfplan.json
 
       - name: Upload Terraform Plan and matrix
@@ -485,10 +418,8 @@ jobs:
           retention-days: 1
   
       - name: Terraform Apply
-        if: >-
-          ${{ inputs.execute_terraform_plan &&
-          steps.state_empty.outputs.skip_workflow == 'false' &&
-          (inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == false)}}
+        # Ensure we're not destroying stacks where 'skip_on_destroy' is true.
+        if: ${{ inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == false }}
         working-directory: "${{ matrix.stack.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
@@ -498,4 +429,5 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: "${{ secrets.GH_TOKEN }}"
-        run: terraform apply -lock-timeout=5m -no-color -input=false tfplan
+          TERRAFORM_ARG_NO_REFRESH: ${{ inputs.terraform_arg_no_refresh }}
+        run: terraform apply ${TERRAFORM_ARGS} tfplan

@@ -10,18 +10,11 @@ on:
         required: false
         default: eu-west-2
         type: string
-      destructive_action_check:
-        required: false
-        type: boolean
-        default: false
-      tflint_module_scan:
-        required: false
-        type: boolean
-        default: false
       execute_terraform_plan:
         required: false
         type: boolean
         default: false
+        description: "Whether or not to execute the Terraform plan. Set to false to plan only."
       python_version:
         required: false
         type: string
@@ -86,13 +79,14 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
       - name: Determine order to run Terraform stacks
         uses: >-
           ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.9.0
         id: stack_config
 
   filter_matrix_1:
-    name: Filter matrix for only planned changes
+    name: Check which runner to use
     needs:
       - define_matrix
     runs-on: ubuntu-latest
@@ -105,7 +99,7 @@ jobs:
         id: filter_matrix
         run: |
           echo '${{ needs.define_matrix.outputs.stack_config }}' > initial_matrix.json
-          
+
           filtered_matrix=$(jq -c --arg env_name "${ENVIRONMENT_NAME}" '
           [ .[]
             | select(.planned_changes == true)
@@ -131,12 +125,11 @@ jobs:
       stack_root_directory: "${{ matrix.stack.directory }}"
       repo: ${{ inputs.repo }}
       ref: ${{ inputs.ref }}
-      tflint_module_scan: ${{ inputs.tflint_module_scan }}
     secrets:
       REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
-  plan:
-    name: Plan Terraform
+  plan_apply:
+    name: Plan and Apply Terraform
     uses: ./.github/workflows/terraform-core.yml
     needs:
       - check
@@ -147,82 +140,21 @@ jobs:
       repo: ${{ inputs.repo }}
       ref:  ${{ inputs.ref }}
       stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
-      destructive_action_check: ${{ inputs.destructive_action_check }}
-      terraform_action: "apply"
-      execute_terraform_plan: false
-      upload_plan: true
-      download_existing_plan: false
-      python_version: ${{ inputs.python_version }}
-      artefact_path: ${{ inputs.artefact_path }}
-    secrets: inherit
-
-  filter_matrix_2:
-    name: Filter matrix for only planned changes
-    needs:
-      - plan
-    runs-on: ubuntu-latest
-    outputs:
-      filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
-      skip_remaining: ${{ steps.check_matrix.outputs.skip_remaining }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: "./artifacts"
-      - name: Filter Stacks
-        id: filter_matrix
-        run: |
-          jq -s '.' ./artifacts/**/updated_matrix.json > combined_matrix.json
-          cat combined_matrix.json
-
-          filtered_matrix=$(jq -c '
-          [ .[]
-            | select(.planned_changes == true)
-          ] | sort_by(.order)
-          ' combined_matrix.json)
-
-          echo "Filtered Matrix: $filtered_matrix"
-          echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
-      - name: Check if filtered matrix is empty
-        id: check_matrix
-        run: |
-          filtered_matrix='${{ steps.filter_matrix.outputs.filtered_matrix }}'
-          if [ "$filtered_matrix" = "[]" ]; then
-            echo "Matrix is empty"
-            echo "skip_remaining=true" >> $GITHUB_OUTPUT
-          else
-            echo "Matrix is not empty"
-            echo "skip_remaining=false" >> $GITHUB_OUTPUT
-          fi
-
-  apply:
-    name: Run Terraform
-    if: ${{ needs.filter_matrix_2.outputs.skip_remaining == 'false' }}
-    uses: ./.github/workflows/terraform-core.yml
-    needs:
-      - filter_matrix_2
-    with:
-      environment_name: ${{ inputs.environment_name }}
-      aws_region: ${{ inputs.aws_region }}
-      repo: ${{ inputs.repo }}
-      ref:  ${{ inputs.ref }}
-      stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
-      destructive_action_check: ${{ inputs.destructive_action_check }}
       terraform_action: "apply"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
       upload_plan: false
-      download_existing_plan: true
       python_version: ${{ inputs.python_version }}
       artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
-
+  
   post-deployment-qa-checks:
     name: Run post deployment QA checks.
     uses: ./.github/workflows/terraform-post-deployment-qa.yml
     needs: 
-      - apply
-      - filter_matrix_2
+      - plan_apply
+      - filter_matrix_1
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
-      stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
+      stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
     secrets: inherit
