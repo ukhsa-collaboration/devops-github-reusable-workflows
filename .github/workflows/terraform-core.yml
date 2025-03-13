@@ -53,6 +53,16 @@ on:
         type: boolean
         default: false
         description: "Download an artifact containing an existing Terraform plan created by a previous run. Incompatible with upload_plan"
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+        description: "The version of python required when building packages via Terraform"
+      artefact_path:
+        required: false
+        type: string
+        default: "nonexistentfile.txt"
+        description: "If there are artefacts created from data sources, specify the path from the TF stack dir here so they are uploaded before applying"
     
     secrets:
       AWS_ROLE_NAME:
@@ -87,6 +97,9 @@ on:
       SSH_DEPLOY_KEY:
         required: false
         description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
+      TF_PLAN_ENCRYPTION_PASSPHRASE:
+        required: true
+        description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
 
 jobs:
   initialise:
@@ -108,8 +121,14 @@ jobs:
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
       - name: Export variables
-        run: echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
+        run: | 
+          echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -155,7 +174,7 @@ jobs:
           done
 
       - name: Find Terraform version
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.7.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.0
         id: terraform_version
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
@@ -205,14 +224,25 @@ jobs:
           AWS_REGION: "${{ inputs.aws_region }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.stack.directory }}"
+          TF_VERSION: "${{ steps.terraform_version.outputs.tf_version }}"
         run: |
           s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
-          dynamodb_table=${AWS_REGION}-state-locks
           s3_bucket=${AWS_ACCOUNT_ID}-${AWS_REGION}-state
-          terraform init \
-            -backend-config=dynamodb_table="${dynamodb_table}" \
+          # `dynamodb_table` is deprecated by Terraform from verison 1.11.0 . Use the new use_lockfile
+          # flag if the Terraform version supports it.
+          # TODO: Remove this conditional in future. 
+          if [ "$(printf '%s\n' "1.11.0" "$TF_VERSION" | sort -V | head -n1)" = "1.11.0" ]; then
+            terraform init \
+            -backend-config=use_lockfile=true \
             -backend-config=bucket="${s3_bucket}" \
             -backend-config=key="${s3_key}"
+          else
+            dynamodb_table=${AWS_REGION}-state-locks
+            terraform init \
+              -backend-config=dynamodb_table="${dynamodb_table}" \
+              -backend-config=bucket="${s3_bucket}" \
+              -backend-config=key="${s3_key}"
+          fi
 
       - name: Terraform Init with Azure Backend
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
@@ -308,8 +338,18 @@ jobs:
         id: download_plan
         if: ( inputs.download_existing_plan == true && steps.state_empty.outputs.state_empty == 'false' )
         with:
-          name: "${{ env.state_name }}-artefacts"
+          name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: ${{ matrix.stack.directory }}
+
+      - name: Decrypt Terraform plan
+        if: steps.download_plan.conclusion == 'success'
+        working-directory: "${{ matrix.stack.directory }}"
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan tfplan.gpg
 
       - name: Terraform Plan
         id: tf_plan
@@ -325,12 +365,20 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TERRAFORM_ACTION: ${{ inputs.terraform_action }}
+          SKIP_DESTROY: "${{ matrix.stack.skip_when_destroying }}"
         run: |
           # Required, otherwise GitHub will exit immediately when the tf plan exit code is non-zero (2 = changes)
           set +e 
 
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
-            terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            if [[ "$SKIP_DESTROY" == "false" ]]; then
+              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
+            else
+              # There's no need to plan because we're skipping this stack.
+              echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
+              echo "planned_changes=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           else
             terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}
           fi
@@ -389,47 +437,52 @@ jobs:
             --argjson runner_label '${{ toJSON(matrix.stack.runner_label) }}' \
             --argjson planned_changes "$planned_changes" \
             --argjson order "${{ matrix.stack.order }}" \
+            --argjson skip_when_destroying "${{ matrix.stack.skip_when_destroying }}" \
             '{
               directory: $dir,
               runner_label: ($runner_label | if type=="array" then . else [.] end),
               planned_changes: $planned_changes,
-              order: $order
+              order: $order,
+              skip_when_destroying: $skip_when_destroying
             }' \
             > updated_matrix.json
 
           cat updated_matrix.json
 
+      - name: Encrypt Terraform plan
+        id: encrypt_plan
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        working-directory: "${{ matrix.stack.directory }}"
+        if: ${{ inputs.upload_plan && steps.tf_plan.conclusion != 'skipped' }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
+          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
+
+          # Delete unencrypted plan files to prevent accidental upload.
+          rm tfplan tfplan.json
+
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
         if: ${{ inputs.upload_plan }}
         with:
-          name: "${{ env.state_name }}-artefacts"
+          name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: |
-            ${{ matrix.stack.directory }}/tfplan*
+            ${{ matrix.stack.directory }}/tfplan.gpg
+            ${{ matrix.stack.directory }}/tfplan.json.gpg
             ${{ matrix.stack.directory }}/updated_matrix.json
+            ${{ matrix.stack.directory }}/${{ inputs.artefact_path }}
           if-no-files-found: warn
           compression-level: 1
           retention-days: 1
   
-      - name: Terraform Destructive Actions Check
-        working-directory: "${{ matrix.stack.directory }}"
-        if: >-
-          ${{ ( inputs.destructive_action_check ||
-            inputs.environment_name == 'pre' || 
-            inputs.environment_name == 'prd' ) &&
-            inputs.terraform_action != 'destroy' &&
-            steps.state_empty.outputs.skip_workflow == 'false' }}
-        run: |
-          delete_count=$(terraform show -json tfplan | jq -r '([.resource_changes[]?.change?.actions?] | flatten) + ([.output_changes[]?.actions?] | flatten) | (map(select(.=="delete")) | length)')
-
-          if [[ "$delete_count" -gt "0" ]]; then
-            echo ":heavy_exclamation_mark: WARNING - "$delete_count" resources will be destroyed in $(basename `pwd`)!" >> $GITHUB_STEP_SUMMARY
-          fi
-
       - name: Terraform Apply
         if: >-
           ${{ inputs.execute_terraform_plan &&
-          steps.state_empty.outputs.skip_workflow == 'false' }}
+          steps.state_empty.outputs.skip_workflow == 'false' &&
+          (inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == 'false')}}
         working-directory: "${{ matrix.stack.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"

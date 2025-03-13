@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+        description: "The version of python required when building packages via Terraform"
       repo:
         required: false
         type: string
@@ -32,6 +37,11 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
+      artefact_path:
+        required: false
+        type: string
+        default: "nonexistentfile.txt"
+        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before applying" 
   
     secrets:
       AWS_ROLE_NAME:
@@ -62,6 +72,10 @@ on:
       INFRACOST_API_KEY:
         required: false
         description: "The API key for generating Infracost reports."
+      TF_PLAN_ENCRYPTION_PASSPHRASE:
+        required: true
+        description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
+  
         
 jobs:
   define_matrix:
@@ -77,7 +91,7 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
       - name: Determine order to run Terraform stacks
         uses: >-
-          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.7.0
+          ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.9.0
         id: stack_config
 
   filter_matrix_1:
@@ -141,47 +155,14 @@ jobs:
       execute_terraform_plan: false
       upload_plan: true
       download_existing_plan: false
+      python_version: ${{ inputs.python_version }}
+      artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
-
-  cost:
-    uses: ./.github/workflows/terraform-infra-cost.yml
-    needs:
-      - check
-      - filter_matrix_1
-    with:
-      stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
-      repo: ${{ inputs.repo }}
-      ref: ${{ inputs.ref }}
-    secrets: inherit
-  
-  approve:
-    name: Approve deployment
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment_name }}
-    if: ${{ inputs.execute_terraform_plan }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    needs:
-      - check
-      - plan
-      - filter_matrix_1
-    steps:
-      - name: "Check approval requirement"
-        run: |
-          protection_rules=$(gh api -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          /repos/${{ github.repository }}/environments/${{ inputs.environment_name }} \
-          | jq -r '.protection_rules | length')
-
-          if [[ $protection_rules == "0" ]]; then
-            echo "Environment ${{ inputs.environment_name }} doesn't require manual approval. Automatically proceeding..."
-          fi
 
   filter_matrix_2:
     name: Filter matrix for only planned changes
     needs:
       - plan
-      - approve
     runs-on: ubuntu-latest
     outputs:
       filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
@@ -221,7 +202,6 @@ jobs:
     if: ${{ needs.filter_matrix_2.outputs.skip_remaining == 'false' }}
     uses: ./.github/workflows/terraform-core.yml
     needs:
-      - approve
       - filter_matrix_2
     with:
       environment_name: ${{ inputs.environment_name }}
@@ -234,27 +214,9 @@ jobs:
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
       upload_plan: false
       download_existing_plan: true
+      python_version: ${{ inputs.python_version }}
+      artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
-    
-  # update-deployment:
-  #   name: Update Github deployment
-  #   if: always()
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - run: |
-  #         deployid=$(gh api   -H "Accept: application/vnd.github+json"  \
-  #           --method GET \
-  #           -H "X-GitHub-Api-Version: 2022-11-28"  \
-  #           -f 'q=sha:${{ github.sha }};environment:${{ inputs.environment_name }}' \
-  #           /repos/ukhsa-collaboration/${{ github.event.repository.name }}/deployments)
-
-  #         gh api \
-  #           --method POST \
-  #           -H "Accept: application/vnd.github+json" \
-  #           -H "X-GitHub-Api-Version: 2022-11-28" \
-  #           /repos/OWNER/${{ github.event.repository.name }}/deployments/"$deployid"/statuses \
-  #           -f "state=success" \
-  #           -f "description=Deployment finished successfully."
 
   post-deployment-qa-checks:
     name: Run post deployment QA checks.
