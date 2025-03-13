@@ -2,10 +2,6 @@ name: "[Analysis] Check Terraform Code"
 on:
   workflow_call:
     inputs:
-      stack_root_directory:
-        required: true
-        description: "The root of the stack to run the Terraform code check in"
-        type: string
       tflint_module_scan:
         required: false
         type: boolean
@@ -54,10 +50,10 @@ jobs:
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.9.0
         id: create_check
         with:
-          name: "Terraform Checks - ${{ inputs.stack_root_directory }}"
+          name: "Terraform Checks"
           status: "in_progress"
-          title: "Terraform code checks for ${{ inputs.stack_root_directory }}"
-          summary: "Terraform code checks for the ${{ inputs.stack_root_directory }} stack are currently in-progress"
+          title: "Terraform code checks"
+          summary: "Terraform code checks are currently in-progress"
           details: |
             | Check              | Status                             |
             | :----------------: | :--------------------------------: |
@@ -65,47 +61,32 @@ jobs:
             | Terraform Linting  |  :hourglass_flowing_sand: Pending  |
             | Checkov Scan       |  :hourglass_flowing_sand: Pending  |
 
-      - name: Find Terraform version
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.0
-        id: terraform_version
-        with:
-          tf_file: "${{ inputs.stack_root_directory }}/terraform.tf"
+      - uses: hashicorp/setup-terraform@v3
 
-      - name: Use correct Terraform version
-        run: |
-          echo "Terraform Version: ${{ steps.terraform_version.outputs.tf_version }}" 
-          tfenv use ${{ steps.terraform_version.outputs.tf_version }}
-          terraform --version
-        working-directory: ${{ inputs.stack_root_directory }}
-    
       - name: Terraform Formatting
         id: tf_fmt
         continue-on-error: true
         run: terraform fmt --recursive --check
-        working-directory: ${{ inputs.stack_root_directory }}
 
       - name: Terraform Linting with tflint
         id: tf_lint
         continue-on-error: true
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-tflint@v0.9.0
-        with:
-          tf_directory: ${{ inputs.stack_root_directory }}
-          scan_modules: ${{ inputs.tflint_module_scan }}
 
       - name: SAST Scan Terraform code
         id: tf_scan
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.9.0
         with:
-          scan_directory: ${{ inputs.stack_root_directory }}
           scan_type: "${{ inputs.checkov_deep_scan && 'deep' || 'light' }}"
 
       - name: Check step status
         shell: bash
+        id: status
         run: |
           if [[ "${{ steps.tf_fmt.outcome }}" == "success" && "${{ steps.tf_lint.outcome }}" == "success" && "${{ steps.tf_scan.outcome }}" == "success" ]]; then
-              echo "job_status=success" >> $GITHUB_ENV
+              echo "job_status=success" >> $GITHUB_OUTPUT
           else
-              echo "job_status=failure" >> $GITHUB_ENV
+              echo "job_status=failure" >> $GITHUB_OUTPUT
           fi
 
           # Update the individual checks
@@ -116,31 +97,31 @@ jobs:
           [[ "${{ steps.tf_lint.outcome }}" != "success" ]] && tf_lint=":heavy_exclamation_mark: Failed"
           [[ "${{ steps.tf_scan.outcome }}" != "success" ]] && tf_scan=":heavy_exclamation_mark: Failed"
 
-          echo "tf_fmt=$tf_fmt" >> $GITHUB_ENV
-          echo "tf_lint=$tf_lint" >> $GITHUB_ENV
-          echo "tf_scan=$tf_scan" >> $GITHUB_ENV
+          echo "tf_fmt=$tf_fmt" >> $GITHUB_OUTPUT
+          echo "tf_lint=$tf_lint" >> $GITHUB_OUTPUT
+          echo "tf_scan=$tf_scan" >> $GITHUB_OUTPUT
 
       - name: Update check with result
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.9.0
         with:
-          name: "Terraform Checks - ${{ inputs.stack_root_directory }}"
+          name: "Terraform Checks"
           status: "completed"
-          title: "Terraform code checks for ${{ inputs.stack_root_directory }}"
-          summary: "Terraform code checks for the ${{ inputs.stack_root_directory }} stack have completed"
-          conclusion: "${{ env.job_status }}"
+          title: "Terraform code checks"
+          summary: "Terraform code checks stack have completed"
+          conclusion: "${{ steps.status.outputs.job_status }}"
           check-run-id: ${{ steps.create_check.outputs.check-run-id }}
           details: |
             | Check              | Status              |
             | :----------------- | :-----------------: |
-            | Terraform Format   |  ${{ env.tf_fmt }}  |
-            | Terraform Linting  |  ${{ env.tf_lint }} |
-            | Checkov Scan       |  ${{ env.tf_scan }} |
+            | Terraform Format   |  ${{ steps.status.outputs.tf_fmt }}  |
+            | Terraform Linting  |  ${{ steps.status.outputs.tf_lint }} |
+            | Checkov Scan       |  ${{ steps.status.outputs.tf_scan }} |
 
       - name: End of Workflow
         shell: bash
         if: always()
         run: |
-          if [[ ${{ env.job_status }} == 'success' ]]; then
+          if [[ ${{ steps.status.outputs.job_status }} == 'success' ]]; then
             exit 0
           else
             exit 1

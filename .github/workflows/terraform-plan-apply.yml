@@ -116,13 +116,7 @@ jobs:
   check:
     name: Lint and SAST Scan Terraform code
     uses: ./.github/workflows/terraform-code-check.yml
-    needs:
-      - filter_matrix_1
-    strategy:
-      matrix:
-        stack: ${{ fromJSON(needs.filter_matrix_1.outputs.filtered_matrix) }}
     with:
-      stack_root_directory: "${{ matrix.stack.directory }}"
       repo: ${{ inputs.repo }}
       ref: ${{ inputs.ref }}
     secrets:
