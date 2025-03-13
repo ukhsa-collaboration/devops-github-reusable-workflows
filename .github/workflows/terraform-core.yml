@@ -376,20 +376,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          terraform_exit_code=0
           # Determine whether to plan a destroy or a regular plan.
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
             if [[ "$SKIP_DESTROY" == "false" ]]; then
               echo "DEBUG: Running terraform plan for destroy"
-              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || true
+              terraform plan -lock-timeout=5m -destroy -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
             else
-              echo "DEBUG: Skipping terraform plan because SKIP_DESTROY is true"
+              echo "DEBUG: Skipping terraform plan because SKIP_DESTROY flag in this stack is true"
               echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
               echo "planned_changes=false" >> $GITHUB_OUTPUT
               exit 0
             fi
           else
             echo "DEBUG: Running standard terraform plan"
-            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || true
+            terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
           fi
 
           terraform_exit_code=$?
