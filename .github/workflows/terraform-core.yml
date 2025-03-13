@@ -393,7 +393,6 @@ jobs:
             terraform plan -lock-timeout=5m -no-color -input=false -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
           fi
 
-          terraform_exit_code=$?
           echo "DEBUG: Terraform exit code is $terraform_exit_code"
           echo "terraform_exit_code=$terraform_exit_code" >> $GITHUB_OUTPUT
 
