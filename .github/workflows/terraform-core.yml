@@ -173,7 +173,7 @@ jobs:
             fi
           done
 
-      - name: Find Terraform version
+      - name: Decide which Terraform version to use based on constraints
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.0
         id: terraform_version
         with:
@@ -217,6 +217,20 @@ jobs:
           
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
 
+      - name: Configure Terraform plugin cache
+        run: |
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.terraform.d/plugin-cache" >>"$GITHUB_ENV"
+          mkdir --parents "$HOME/.terraform.d/plugin-cache"
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+          key: terraform-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-${{ runner.os }}-
+  
       - name: Terraform Init with AWS S3 Backend
         working-directory: "${{ matrix.stack.directory }}"
         if: ${{ steps.backend.outputs.backend_type == 's3' }}
