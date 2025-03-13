@@ -61,6 +61,9 @@ jobs:
             | Terraform Linting  |  :hourglass_flowing_sand: Pending  |
             | Checkov Scan       |  :hourglass_flowing_sand: Pending  |
 
+        # Necessary as node isn't installed on the devops-terraform-ci image.
+      - uses: actions/setup-node@v4
+              
       - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Formatting
