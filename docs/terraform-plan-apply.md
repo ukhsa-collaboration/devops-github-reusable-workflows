@@ -31,4 +31,6 @@ This workflow handles the deployment of Terraform stacks, with various checks an
 
 `REPO_SSH_DEPLOY_KEY` (optional): SSH key for checking out private repositories.
 
+`INFRACOST_API_KEY` (optional): The API key for generating Infracost reports.
+
 `TF_PLAN_ENCRYPTION_PASSPHRASE`: The passphrase used to encrypt the TF plan artefact.
