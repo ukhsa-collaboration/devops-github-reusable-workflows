@@ -29,7 +29,7 @@ on:
         description: "The maximum number of jobs to run at the same time. This should normally be 1 to avoid race conditions."
         type: number
         default: 1
-      terraform_arg_no_refresh:
+      terraform_arg_refresh:
         required: false
         description: "Whether or not to refresh Terraform state when running Terraform commands. Should be 'true' (string, not boolean) for scheduled drift detection workflows."
         type: string
@@ -97,7 +97,8 @@ on:
         description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
 
 env:
-  TERRAFORM_ARGS: "-refresh=${{ inputs.terraform_arg_no_refresh }} -no-color -lock-timeout=5m -input=false"
+  TERRAFORM_ARGS: "-refresh=${{ inputs.terraform_arg_refresh }} -no-color -lock-timeout=5m -input=false"
+  TERRAFORM_COMMAND: "terraform"
 
 jobs:
   initialise:
@@ -334,8 +335,9 @@ jobs:
           # Determine whether to plan a destroy or a regular plan.
           if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
             if [[ "$SKIP_DESTROY" == "false" ]]; then
-              echo "DEBUG: Running terraform plan for destroy"
-              terraform plan ${TERRAFORM_ARGS} -destroy -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
+              echo "DEBUG: Running terraform plan for destroy: "
+              echo "DEBUG: ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -destroy -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}"
+              ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -destroy -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
             else
               echo "DEBUG: Skipping terraform plan because SKIP_DESTROY flag in this stack is true"
               echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
@@ -344,13 +346,14 @@ jobs:
             fi
           else
             echo "DEBUG: Running standard terraform plan"
-            terraform plan ${TERRAFORM_ARGS} -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
+            echo "DEBUG: ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}"
+            ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
           fi
 
           echo "DEBUG: Terraform exit code is $terraform_exit_code"
           echo "terraform_exit_code=$terraform_exit_code" >> $GITHUB_OUTPUT
 
-          terraform show -json tfplan | jq > tfplan.json
+          ${TERRAFORM_COMMAND} show -json tfplan | jq > tfplan.json
           
           if [ $terraform_exit_code -eq 0 ]; then
             echo "DEBUG: Terraform Plan exit code indicated no changes."
@@ -399,8 +402,10 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: "${{ secrets.GH_TOKEN }}"
-          TERRAFORM_ARG_NO_REFRESH: ${{ inputs.terraform_arg_no_refresh }}
-        run: terraform apply ${TERRAFORM_ARGS} tfplan
+        run: |
+          echo "DEBUG: Running Terraform apply command:"
+          echo "DEBUG: ${TERRAFORM_COMMAND} apply ${TERRAFORM_ARGS} tfplan"
+          ${TERRAFORM_COMMAND} apply ${TERRAFORM_ARGS} tfplan
 
       - name: Encrypt Terraform plan
         id: encrypt_plan
