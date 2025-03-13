@@ -21,7 +21,7 @@ on:
         default: "apply"
         description: "Which Terraform action to run. 'apply' or 'destroy'"
       stack_config:
-        description: "A detailed matrix containing the Terraform stack configuration and dependencies"
+        description: "JSON containing the Terraform stack configuration and dependencies"
         required: true
         type: string
       max_parallel:
@@ -47,7 +47,7 @@ on:
       upload_plan:
         required: false
         type: boolean
-        default: false
+        default: true
         description: "Create an artifact containing the resulting Terraform plan."
       python_version:
         required: false
