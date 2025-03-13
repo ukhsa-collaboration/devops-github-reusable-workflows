@@ -391,8 +391,13 @@ jobs:
           cat updated_matrix.json
   
       - name: Terraform Apply
-        # Ensure we're not destroying stacks where 'skip_on_destroy' is true.
-        if: ${{ inputs.execute_terraform_plan == 'true' && ( inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == false ) }}
+        # We don't want to apply if there are no planned changes OR if we're destroying and
+        # this stack's dependencies.json file has `skip_when_destroying` set to true.
+        if: >-
+            ${{ inputs.execute_terraform_plan == 'true' &&
+            steps.tf_plan.outputs.planned_changes == 'false' && (
+            inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying ==
+            false ) }}
         working-directory: "${{ matrix.stack.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
