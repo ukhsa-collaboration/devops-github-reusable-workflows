@@ -178,17 +178,7 @@ jobs:
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
 
-      # TODO: Find out and document why we can't use setup-terraform on self-hosted runners. 
-      - name: Setup Terraform for self-hosted runner
-        if: ${{ contains(matrix.stack.runner_label, 'self-hosted') }}
-        run: |
-          echo "Terraform Version: ${{ steps.terraform_version.outputs.tf_version }}" 
-          tfenv use ${{ steps.terraform_version.outputs.tf_version }}
-          terraform --version
-        working-directory: ${{ matrix.stack.directory }}
-
-      - name: Setup Terraform for GHE runner
-        if: ${{ !contains(matrix.stack.runner_label, 'self-hosted') }}
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
@@ -286,24 +276,26 @@ jobs:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
         run: |
           find_app_var_files() {
-            local dir=$1
-            local tfvars=$(find ./$dir/tfvars/ -name "*${ENVIRONMENT_NAME}.tfvars" -print -quit)
+            local dir="$1"
+            # Search for a environment-specific .tfvars file in the specified directory's tfvars folder.
+            local tfvars
+            tfvars=$(find "./$dir/tfvars/" -maxdepth 1 -name "*${ENVIRONMENT_NAME}.tfvars" -print -quit 2>/dev/null)
             if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f $tfvars)"
+              echo "-var-file=$(readlink -f "$tfvars")"
             fi
           }
 
           find_env_var_files() {
             local tfvars="./environment/${ENVIRONMENT_NAME}.tfvars"
             if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f $tfvars)"
+              echo "-var-file=$(readlink -f "$tfvars")"
             fi
           }
 
           find_global_var_file() {
             local tfvars="globals.tfvars"
             if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f $tfvars)"
+              echo "-var-file=$(readlink -f "$tfvars")"
             fi
           }
 
@@ -312,7 +304,9 @@ jobs:
           env_var_file=$(find_env_var_files)
           full_variable_flags="$global_vars_file $app_var_file $env_var_file"
 
+          echo "DEBUG: Will use variables: $full_variable_flags"
           echo "tf_vars=$full_variable_flags" >> $GITHUB_OUTPUT
+
 
       - name: Terraform Plan
         id: tf_plan
