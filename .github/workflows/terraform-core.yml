@@ -192,6 +192,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
+          terraform_wrapper: false
 
       - name: Determine Backend Type
         working-directory: "${{ matrix.stack.directory }}"
@@ -288,7 +289,7 @@ jobs:
             echo "DEBUG: No state found and execute_terraform_plan is false. Skipping further steps."
             skip_workflow=true
           else
-            echo "DEBUG: Either state exists or terraform plan is set to execute. We're going to apply."
+            echo "DEBUG: Either state exists or terraform plan is set to execute."
           fi
       
           echo "skip_workflow=$skip_workflow" >> $GITHUB_OUTPUT
