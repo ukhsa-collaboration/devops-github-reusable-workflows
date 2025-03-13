@@ -395,7 +395,7 @@ jobs:
         # this stack's dependencies.json file has `skip_when_destroying` set to true.
         if: >-
             ${{ inputs.execute_terraform_plan == true &&
-            steps.tf_plan.outputs.planned_changes == 'false' && (
+            steps.tf_plan.outputs.planned_changes == 'true' && (
             inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying ==
             false ) }}
         working-directory: "${{ matrix.stack.directory }}"
