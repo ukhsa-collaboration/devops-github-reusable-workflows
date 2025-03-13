@@ -488,7 +488,7 @@ jobs:
         if: >-
           ${{ inputs.execute_terraform_plan &&
           steps.state_empty.outputs.skip_workflow == 'false' &&
-          (inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == 'false')}}
+          (inputs.terraform_action != 'destroy' || matrix.stack.skip_when_destroying == false)}}
         working-directory: "${{ matrix.stack.directory }}"
         env:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
