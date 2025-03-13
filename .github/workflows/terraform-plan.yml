@@ -54,6 +54,15 @@ jobs:
           ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.9.0
         id: stack_config
 
+  check:
+    name: Lint and SAST Scan Terraform code
+    uses: ./.github/workflows/terraform-code-check.yml
+    with:
+      repo: ${{ inputs.repo }}
+      ref: ${{ inputs.ref }}
+    secrets:
+      REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+
   filter_matrix:
     name: Filter matrix for only planned changes
     needs:

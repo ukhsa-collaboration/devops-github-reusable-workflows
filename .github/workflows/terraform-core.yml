@@ -411,7 +411,7 @@ jobs:
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         working-directory: "${{ matrix.stack.directory }}"
-        if: ${{ inputs.upload_plan && steps.tf_plan.conclusion != 'skipped' }}
+        if: ${{ inputs.upload_plan && steps.tf_plan.conclusion != 'skipped' && steps.tf_plan.outputs.planned_changes == 'true' }}
         run: |
           pass_file=$(mktemp)
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
@@ -424,7 +424,7 @@ jobs:
 
       - name: Upload Terraform Plan and matrix
         uses: actions/upload-artifact@v4
-        if: ${{ inputs.upload_plan }}
+        if: ${{ inputs.upload_plan && steps.tf_plan.outputs.planned_changes == 'true' }}
         with:
           name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: |
