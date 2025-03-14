@@ -129,15 +129,6 @@ jobs:
           name: "${{ steps.variables.outputs.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}"
 
-      - name: Decrypt Terraform Plan
-        working-directory: ${{ steps.download.outputs.download-path }}
-        env:
-          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
-        run: |
-          pass_file=$(mktemp)
-          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
-
       - name: Check if there are any changes
         working-directory: ${{ steps.download.outputs.download-path }}
         id: changes
@@ -146,6 +137,16 @@ jobs:
 
           echo "DEBUG: planned_changes: $planned_changes"
           echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
+  
+      - name: Decrypt Terraform Plan
+        working-directory: ${{ steps.download.outputs.download-path }}
+        if: steps.changes.outputs.planned_changes
+        env:
+          ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
+        run: |
+          pass_file=$(mktemp)
+          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
+          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
   
       - name: Comment plan on PR
         uses: actions/github-script@v7
