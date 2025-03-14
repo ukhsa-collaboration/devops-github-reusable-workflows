@@ -101,7 +101,7 @@ env:
   TERRAFORM_COMMAND: "terraform"
 
 jobs:
-  initialise:
+  terraform:
     name: "Initialise and run Terraform for ${{ matrix.stack.directory }}"
     runs-on: "${{ matrix.stack.runner_label }}"
     environment: ${{ inputs.environment_name }}
@@ -189,6 +189,7 @@ jobs:
         id: backend
         run: |
           backend_type=$(grep -oP 'backend\s+"?\K[^"\s]+' ./backend.tf)
+          echo "DEBUG: Determined backend type: $backend_type"
           echo "backend_type=$backend_type" >> $GITHUB_OUTPUT
 
       - name: Add SSH deploy key to ssh-agent
@@ -232,15 +233,18 @@ jobs:
         run: |
           s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
           s3_bucket=${AWS_ACCOUNT_ID}-${AWS_REGION}-state
+          echo "DEBUG: State will be persisted to: s3://$s3_bucket/$s3_key"
           # `dynamodb_table` is deprecated by Terraform from verison 1.11.0 . Use the new use_lockfile
           # flag if the Terraform version supports it.
           # TODO: Remove this conditional in future. 
           if [ "$(printf '%s\n' "1.11.0" "$TF_VERSION" | sort -V | head -n1)" = "1.11.0" ]; then
+            echo "DEBUG: Will use native S3 locking to lock Terraform state"
             terraform init \
             -backend-config=use_lockfile=true \
             -backend-config=bucket="${s3_bucket}" \
             -backend-config=key="${s3_key}"
           else
+            echo "DEBUG: Will use DynamoDB table to lock Terraform state"
             dynamodb_table=${AWS_REGION}-state-locks
             terraform init \
               -backend-config=dynamodb_table="${dynamodb_table}" \

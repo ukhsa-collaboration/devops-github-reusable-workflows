@@ -85,13 +85,15 @@ jobs:
           ukhsa-collaboration/devops-github-actions/.github/actions/terraform-dependency-sort@v0.9.0
         id: stack_config
 
-  filter_matrix_1:
-    name: Check which runner to use
+  filter_matrix:
+    name: Filter Stacks
     needs:
       - define_matrix
     runs-on: ubuntu-latest
     outputs:
-      filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
+      empty_deps: ${{ steps.filter_matrix.outputs.empty_deps }}
+      non_empty_deps: ${{ steps.filter_matrix.outputs.non_empty_deps }}
+      combined_stacks: ${{ steps.filter_matrix.outputs.combined_stacks }}
     steps:
       - name: Filter Stacks
         env:
@@ -100,18 +102,34 @@ jobs:
         run: |
           echo '${{ needs.define_matrix.outputs.stack_config }}' > initial_matrix.json
 
+          # Filter the matrix to only include stacks with planned changes.
+          # Additionally, if the runner_label is "self-hosted", append the environment name.
+          # TODO: Find out how a stack could possibly have any planned changed at all - we haven't even
+          # run terraform init yet!
           filtered_matrix=$(jq -c --arg env_name "${ENVIRONMENT_NAME}" '
-          [ .[]
-            | select(.planned_changes == true)
-            | if .runner_label == "self-hosted"
-              then .runner_label = ["self-hosted", $env_name]
-              else .
-              end
-          ]
+            [ .[]
+              | select(.planned_changes == true)
+              | if .runner_label == "self-hosted"
+                  then .runner_label = ["self-hosted", $env_name]
+                  else .
+                end
+            ]
           ' initial_matrix.json)
-
           echo "Filtered Matrix: $filtered_matrix"
-          echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
+
+          # Split the filtered matrix into two groups based on dependencies so that we can run 
+          # Terraform stacks that don't have dependencies in a seperate job to those that do.
+          empty_deps=$(echo "$filtered_matrix" | jq -c '[.[] | select((.dependencies | length) == 0)]')
+          non_empty_deps=$(echo "$filtered_matrix" | jq -c '[.[] | select((.dependencies | length) > 0)]')
+
+          echo "DEBUG: Filtered Matrix - Combined stacks: $combined_stacks"
+          echo "DEBUG: Filtered Matrix - Stacks without dependencies: $empty_deps"
+          echo "DEBUG: Filtered Matrix - Stacks with dependencies: $non_empty_deps"
+
+          echo "empty_deps=$empty_deps" >> $GITHUB_OUTPUT
+          echo "non_empty_deps=$non_empty_deps" >> $GITHUB_OUTPUT
+          echo "combined_stacks=$combined_stacks" >> $GITHUB_OUTPUT
+
   
   check:
     name: Lint and SAST Scan Terraform code
@@ -122,18 +140,41 @@ jobs:
     secrets:
       REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
-  plan_apply:
-    name: Plan and Apply Terraform
+  # Since we cannot guarantee that the first plan_apply_with_deps won't depend on something in plan_apply_no_deps, we apply 
+  # the stacks without dependencies first in parallel and then apply the stacks with dependencies serially.
+  plan_apply_no_deps:
+    name: Plan and Apply Terraform (Stacks with no dependencies)
     uses: ./.github/workflows/terraform-core.yml
     needs:
       - check
-      - filter_matrix_1
+      - filter_matrix
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
       repo: ${{ inputs.repo }}
       ref:  ${{ inputs.ref }}
-      stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
+      stack_config: "${{ needs.filter_matrix.outputs.empty_deps }}"
+      terraform_action: "apply"
+      execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
+      upload_plan: true
+      python_version: ${{ inputs.python_version }}
+      artefact_path: ${{ inputs.artefact_path }}
+      max_parallel: 5
+    secrets: inherit
+    
+  plan_apply_with_deps:
+    name: Plan and Apply Terraform (Stacks with dependencies)
+    uses: ./.github/workflows/terraform-core.yml
+    needs:
+      - check
+      - filter_matrix
+      - plan_apply_no_deps
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      aws_region: ${{ inputs.aws_region }}
+      repo: ${{ inputs.repo }}
+      ref:  ${{ inputs.ref }}
+      stack_config: "${{ needs.filter_matrix.outputs.non_empty_deps }}"
       terraform_action: "apply"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
       upload_plan: true
@@ -145,10 +186,11 @@ jobs:
     name: Run post deployment QA checks.
     uses: ./.github/workflows/terraform-post-deployment-qa.yml
     needs: 
-      - plan_apply
-      - filter_matrix_1
+      - plan_apply_with_deps
+      - plan_apply_no_deps
+      - filter_matrix
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
-      stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
+      stack_config: "${{ needs.filter_matrix.outputs.combined_stacks }}"
     secrets: inherit
