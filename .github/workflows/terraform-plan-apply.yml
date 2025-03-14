@@ -136,7 +136,7 @@ jobs:
       stack_config: "${{ needs.filter_matrix_1.outputs.filtered_matrix }}"
       terraform_action: "apply"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
-      upload_plan: false
+      upload_plan: true
       python_version: ${{ inputs.python_version }}
       artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
