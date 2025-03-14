@@ -34,7 +34,12 @@ on:
         required: false
         type: string
         default: "nonexistentfile.txt"
-        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before applying" 
+        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before applying"
+      terraform_arg_refresh:
+        required: false
+        description: "Whether or not to refresh Terraform state when running Terraform commands. Should be 'true' (string, not boolean) for scheduled drift detection workflows."
+        type: string
+        default: "false"
   
     secrets:
       AWS_ROLE_NAME:
@@ -159,6 +164,7 @@ jobs:
       upload_plan: true
       python_version: ${{ inputs.python_version }}
       artefact_path: ${{ inputs.artefact_path }}
+      terraform_arg_refresh: ${{ inputs.terraform_arg_refresh }}
       max_parallel: 5
     secrets: inherit
     
@@ -179,6 +185,7 @@ jobs:
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
       upload_plan: true
       python_version: ${{ inputs.python_version }}
+      terraform_arg_refresh: ${{ inputs.terraform_arg_refresh }}
       artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
   
