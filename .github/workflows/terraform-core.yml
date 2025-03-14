@@ -419,12 +419,12 @@ jobs:
           gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
 
           # Delete unencrypted plan files so that they can't be accidentally uploaded by a
-          # an empty artefact_path input. 
+          # an empty artefact_path input.
           rm tfplan tfplan.json
 
-      - name: Upload Terraform Plan and matrix
+      - name: Upload Job Artefacts
         uses: actions/upload-artifact@v4
-        if: ${{ inputs.upload_plan && steps.tf_plan.outputs.planned_changes == 'true' }}
+        if: ${{ inputs.upload_plan }}
         with:
           name: "${{ env.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: |
