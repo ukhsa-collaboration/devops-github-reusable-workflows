@@ -80,13 +80,22 @@ jobs:
           echo "DEBUG: state_name=$(basename ${{ matrix.stack.directory }})"
 
       - uses: actions/download-artifact@v4
-        id: download_plan
+        id: download
         with:
           name: "${{ env.state_name }}-${{ inputs.environment_name}}-artefacts"
           path: ${{ matrix.stack.directory }}
 
+      - name: Check if there are any changes
+        working-directory: ${{ steps.download.outputs.download-path }}
+        id: changes
+        run: |
+          planned_changes=$(jq -r '.planned_changes' updated_matrix.json)
+
+          echo "DEBUG: planned_changes: $planned_changes"
+          echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
+  
       - name: Decrypt Terraform plan
-        if: steps.download_plan.conclusion == 'success'
+        if: steps.changes.outputs.planned_changes == 'true'
         working-directory: "${{ matrix.stack.directory }}"
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
@@ -98,6 +107,7 @@ jobs:
       - name: Deep SAST Scan Terraform code
         id: tf_scan
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.9.0
+        if: steps.changes.outputs.planned_changes == 'true'
         with:
           scan_directory: ${{ matrix.stack.directory }}
           scan_type: "deep"
