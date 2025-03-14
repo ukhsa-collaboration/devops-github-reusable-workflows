@@ -138,8 +138,18 @@ jobs:
           printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
           gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
 
+      - name: Check if there are any changes
+        working-directory: ${{ steps.download.outputs.download-path }}
+        id: changes
+        run: |
+          planned_changes=$(jq -r '.planned_changes' updated_matrix.json)
+
+          echo "DEBUG: planned_changes: $planned_changes"
+          echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
+  
       - name: Comment plan on PR
         uses: actions/github-script@v7
+        if: steps.changes.outputs.planned_changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -206,6 +216,8 @@ jobs:
               }
               if (summary.update.length == 0 && summary.delete.length == 0 && summary.create.length == 0 && summary.replace.length == 0) {
                 summaryText += `👌 **No resources will be changed**\n\n`;
+                // This block of code should be unreachable because planned_changes should be false and this
+                // Github Actions step should be skipped.
               }
 
               // Append the comment identifier so that subsequent runs can update the correct comment.
