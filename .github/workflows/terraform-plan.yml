@@ -140,7 +140,7 @@ jobs:
   
       - name: Decrypt Terraform Plan
         working-directory: ${{ steps.download.outputs.download-path }}
-        if: steps.changes.outputs.planned_changes
+        if: steps.changes.outputs.planned_changes == 'true'
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         run: |
@@ -150,7 +150,7 @@ jobs:
   
       - name: Comment plan on PR
         uses: actions/github-script@v7
-        if: steps.changes.outputs.planned_changes
+        if: steps.changes.outputs.planned_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
