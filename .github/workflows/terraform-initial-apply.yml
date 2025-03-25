@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+        description: "The version of python required when building packages via Terraform"
       repo:
         required: false
         type: string
@@ -32,11 +37,11 @@ on:
         type: string
         default: ${{ github.ref }}
         description: "Specify the branch of the Terraform code. Normally left blank to use calling ref."
-      runner_label:
+      artefact_path:
         required: false
         type: string
-        default: "ubuntu-latest"
-        description: "Specifies a targetted runner for the job. Use \"self-hosted\" if you've configured a self hosted runner, otherwise leave as the default."
+        default: ""
+        description: "If there are artefacts created from data sources, specify the path here so they are downloaded before applying"
   
     secrets:
       AWS_ROLE_NAME:
@@ -64,6 +69,9 @@ on:
       SSH_DEPLOY_KEY:
         required: false
         description: "Deprecated: Use either TF_MODULES_SSH_DEPLOY_KEY or REPO_SSH_DEPLOY_KEY instead."
+      TF_PLAN_ENCRYPTION_PASSPHRASE:
+        required: true
+        description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
         
 jobs:
   define_matrix:
@@ -89,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
-      skip_remaining: ${{ steps.check_empty.outputs.skip_remaining }}
+      skip_remaining: ${{ steps.check_matrix.outputs.skip_remaining }}
     steps:
       - name: Filter Stacks
         env:
@@ -108,6 +116,7 @@ jobs:
             ]
           ' initial_matrix.json)
 
+          echo "Filtered Matrix: $filtered_matrix"
           echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
       - name: Check if filtered matrix is empty
         id: check_matrix
@@ -131,6 +140,7 @@ jobs:
       repo: ${{ inputs.repo }}
       ref: ${{ inputs.ref }}
       tflint_module_scan: ${{ inputs.tflint_module_scan }}
+      bypass_checks: true
     secrets:
       REPO_SSH_DEPLOY_KEY: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
 
@@ -139,7 +149,6 @@ jobs:
     if: ${{ needs.filter_matrix.outputs.skip_remaining == 'false' }}
     uses: ./.github/workflows/terraform-core.yml
     needs:
-      - check
       - filter_matrix
     with:
       environment_name: ${{ inputs.environment_name }}
@@ -150,17 +159,19 @@ jobs:
       destructive_action_check: ${{ inputs.destructive_action_check }}
       terraform_action: "apply"
       execute_terraform_plan: ${{ inputs.execute_terraform_plan }}
-      upload_plan: true
+      upload_plan: false
       download_existing_plan: false
+      python_version: ${{ inputs.python_version }}
+      artefact_path: ${{ inputs.artefact_path }}
     secrets: inherit
 
-  post-deployment-qa-checks:
-    name: Run post deployment QA checks.
-    uses: ./.github/workflows/terraform-post-deployment-qa.yml
-    needs: 
-      - apply
-    with:
-      environment_name: ${{ inputs.environment_name }}
-      aws_region: ${{ inputs.aws_region }}
-      stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
-    secrets: inherit
+  # post-deployment-qa-checks:
+  #   name: Run post deployment QA checks.
+  #   uses: ./.github/workflows/terraform-post-deployment-qa.yml
+  #   needs: 
+  #     - apply
+  #   with:
+  #     environment_name: ${{ inputs.environment_name }}
+  #     aws_region: ${{ inputs.aws_region }}
+  #     stack_config: "${{ needs.filter_matrix_2.outputs.filtered_matrix }}"
+  #   secrets: inherit

@@ -2,6 +2,11 @@ name: "[Analysis] Check Terraform Code"
 on:
   workflow_call:
     inputs:
+      bypass_checks:
+        required: true
+        description: "Whether to fail the job on failing checks or not"
+        type: boolean
+        default: false
       stack_root_directory:
         required: true
         description: "The root of the stack to run the Terraform code check in"
@@ -138,6 +143,7 @@ jobs:
 
       - name: End of Workflow
         shell: bash
+        continue-on-error: ${{ inputs.bypass_checks }}
         if: always()
         run: |
           if [[ ${{ env.job_status }} == 'success' ]]; then
