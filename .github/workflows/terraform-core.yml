@@ -173,7 +173,7 @@ jobs:
           done
 
       - name: Decide which Terraform version to use based on constraints
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.1
         id: terraform_version
         with:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
