@@ -127,7 +127,7 @@ jobs:
           empty_deps=$(echo "$filtered_matrix" | jq -c '[.[] | select((.dependencies | length) == 0)]')
           non_empty_deps=$(echo "$filtered_matrix" | jq -c '[.[] | select((.dependencies | length) > 0)]')
 
-          combined_stacks=$(echo "$empty_deps $non_empty_deps" | jq -s add)
+          combined_stacks=$(echo "$empty_deps $non_empty_deps" | jq -c -s add)
 
           echo "DEBUG: Filtered Matrix - Combined stacks: $combined_stacks"
           echo "DEBUG: Filtered Matrix - Stacks without dependencies: $empty_deps"
