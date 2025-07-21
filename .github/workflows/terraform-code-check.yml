@@ -47,7 +47,7 @@ jobs:
           ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
   
       - name: Create pending check
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.9.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.10.0
         id: create_check
         with:
           name: "Terraform Checks"
@@ -73,11 +73,11 @@ jobs:
       - name: Terraform Linting with tflint
         id: tf_lint
         continue-on-error: true
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-tflint@v0.9.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-tflint@v0.10.0
 
       - name: SAST Scan Terraform code
         id: tf_scan
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.9.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/terraform-checkov-scan@v0.10.0
         with:
           scan_type: "${{ inputs.checkov_deep_scan && 'deep' || 'light' }}"
 
@@ -104,7 +104,7 @@ jobs:
           echo "tf_scan=$tf_scan" >> $GITHUB_OUTPUT
 
       - name: Update check with result
-        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.9.0
+        uses: ukhsa-collaboration/devops-github-actions/.github/actions/github-status-check@v0.10.0
         with:
           name: "Terraform Checks"
           status: "completed"
