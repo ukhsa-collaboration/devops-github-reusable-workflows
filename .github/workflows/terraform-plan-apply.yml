@@ -152,6 +152,7 @@ jobs:
   plan_apply_no_deps:
     name: Plan and Apply Terraform (Stacks with no dependencies)
     uses: ./.github/workflows/terraform-core.yml
+    if: ${{ needs.filter_matrix.outputs.empty_deps != '[]' }}
     needs:
       - check
       - filter_matrix
@@ -173,6 +174,7 @@ jobs:
   plan_apply_with_deps:
     name: Plan and Apply Terraform (Stacks with dependencies)
     uses: ./.github/workflows/terraform-core.yml
+    if: ${{ needs.filter_matrix.outputs.non_empty_deps != '[]' }}
     needs:
       - check
       - filter_matrix
