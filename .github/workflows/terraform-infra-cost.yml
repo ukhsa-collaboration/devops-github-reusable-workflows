@@ -63,12 +63,12 @@ jobs:
         run: |
           infracost generate config --repo-path=. \
           --template-path=infracost.yml.tmpl \
-          --out-file=infracost.yml
+          --out-file=/tmp/infracost.yml
   
       - name: Generate current Infracost
         continue-on-error: true
         run: |
-          infracost breakdown --config-file infracost.yml \
+          infracost breakdown --config-file=/tmp/infracost.yml \
                               --format=json \
                               --out-file=/tmp/infracost-base.json
 
@@ -81,7 +81,7 @@ jobs:
       - name: Generate new Infracost
         continue-on-error: true
         run: |
-          infracost diff  --config-file infracost.yml \
+          infracost diff  --config-file=/tmp/infracost.yml \
                           --format=json \
                           --compare-to=/tmp/infracost-base.json \
                           --out-file=/tmp/infracost.json
