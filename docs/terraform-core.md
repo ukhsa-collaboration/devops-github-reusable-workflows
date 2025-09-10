@@ -26,8 +26,6 @@ This workflow is generally not intended to be called directly by users. Instead,
 
 `upload_plan` (optional, default: false): If true, uploads the generated Terraform plan as an artifact.
 
-`download_existing_plan` (optional, default: false): If true, downloads an existing plan from a previous workflow.
-
 `runner_label` (optional, default: ubuntu-latest): Specifies the runner for job execution. Use "self-hosted" for custom runners.
 
 #### Secrets
