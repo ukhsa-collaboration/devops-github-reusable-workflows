@@ -70,9 +70,10 @@ jobs:
         env:
           stack_root_directory: ${{ matrix.stack.directory }}
         run: |
+          ident=$(echo -n $stack_root_directory | md5sum)
           infracost breakdown --path=${stack_root_directory} \
                               --format=json \
-                              --out-file=/tmp/infracost-base.json
+                              --out-file=/tmp/infracost-base-"$ident".json
 
       - name: Checkout out PR branch
         uses: actions/checkout@v4
@@ -85,16 +86,21 @@ jobs:
         env:
           stack_root_directory: ${{ matrix.stack.directory }}
         run: |
+          ident=$(echo -n $stack_root_directory | md5sum)
           infracost diff --path=${stack_root_directory} \
                           --format=json \
-                          --compare-to=/tmp/infracost-base.json \
-                          --out-file=/tmp/infracost.json
+                          --compare-to=/tmp/infracost-base-"$ident".json \
+                          --out-file=/tmp/infracost-"$ident".json
 
       - name: Post Infracost comment
         continue-on-error: true
+        env:
+          stack_root_directory: ${{ matrix.stack.directory }}
         run: |
-          infracost comment github --path=/tmp/infracost.json \
+          ident=$(echo -n $stack_root_directory | md5sum)
+          infracost comment github --path=/tmp/infracost-"$ident".json \
                                    --repo=$GITHUB_REPOSITORY \
                                    --github-token=${{ secrets.GITHUB_TOKEN }} \
                                    --pull-request=${{ github.event.pull_request.number }} \
+                                   --tag="$ident"
                                    --behavior=update
