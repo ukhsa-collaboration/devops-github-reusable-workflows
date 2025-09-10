@@ -101,6 +101,15 @@ env:
   TERRAFORM_COMMAND: "terraform"
 
 jobs:
+  infracost:
+    name: Run Infracost
+    uses: ./.github/workflows/terraform-infra-cost.yml
+    with:
+      repo: ${{ inputs.repo }}
+      ref: ${{ inputs.ref }}
+    secrets:
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+
   terraform:
     name: "Initialise and run Terraform for ${{ matrix.stack.directory }}"
     runs-on: "${{ matrix.stack.runner_label }}"

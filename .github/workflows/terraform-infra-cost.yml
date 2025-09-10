@@ -1,13 +1,9 @@
-name: "[Analysis] Terraform Cost Estimation with Infracost"
+name: "Terraform Cost Estimation with Infracost"
 # See https://github.com/marketplace/actions/infracost-actions for further examples
 
 on:
   workflow_call:
     inputs:
-      stack_config:
-        description: "A detailed matrix containing the Terraform stack configuration and dependencies"
-        required: true
-        type: string
       repo:
         required: false
         type: string
@@ -33,9 +29,6 @@ jobs:
   infracost:
     name: Compare cost to main
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        stack: "${{ fromJSON(inputs.stack_config) }}"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -65,15 +58,19 @@ jobs:
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
+      - name: Generate Infracost config file from template
+        continue-on-error: true
+        run: |
+          infracost generate config --repo-path=. \
+          --template-path=infracost.yml.tmpl \
+          --out-file=infracost.yml
+  
       - name: Generate current Infracost
         continue-on-error: true
-        env:
-          stack_root_directory: ${{ matrix.stack.directory }}
         run: |
-          ident=$(echo -n $stack_root_directory | md5sum)
-          infracost breakdown --path=${stack_root_directory} \
+          infracost breakdown --config-file infracost.yml \
                               --format=json \
-                              --out-file=/tmp/infracost-base-"$ident".json
+                              --out-file=/tmp/infracost-base.json
 
       - name: Checkout out PR branch
         uses: actions/checkout@v4
@@ -83,24 +80,17 @@ jobs:
 
       - name: Generate new Infracost
         continue-on-error: true
-        env:
-          stack_root_directory: ${{ matrix.stack.directory }}
         run: |
-          ident=$(echo -n $stack_root_directory | md5sum)
-          infracost diff --path=${stack_root_directory} \
+          infracost diff  --config-file infracost.yml \
                           --format=json \
-                          --compare-to=/tmp/infracost-base-"$ident".json \
-                          --out-file=/tmp/infracost-"$ident".json
+                          --compare-to=/tmp/infracost-base.json \
+                          --out-file=/tmp/infracost.json
 
       - name: Post Infracost comment
         continue-on-error: true
-        env:
-          stack_root_directory: ${{ matrix.stack.directory }}
         run: |
-          ident=$(echo -n $stack_root_directory | md5sum)
-          infracost comment github --path=/tmp/infracost-"$ident".json \
+          infracost comment github --path=/tmp/infracost.json \
                                    --repo=$GITHUB_REPOSITORY \
                                    --github-token=${{ secrets.GITHUB_TOKEN }} \
                                    --pull-request=${{ github.event.pull_request.number }} \
-                                   --tag="$ident"
                                    --behavior=update
