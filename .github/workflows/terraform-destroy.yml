@@ -54,6 +54,10 @@ on:
       TF_PLAN_ENCRYPTION_PASSPHRASE:
         required: true
         description: "The passphrase used to encrypt Terraform Plans before uploading them as Github Artifacts"
+      INFRACOST_API_KEY:
+        required: false
+        description: "The API key for generating Infracost reports."
+  
   
 jobs:
   define_matrix:
