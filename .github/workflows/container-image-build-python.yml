@@ -141,8 +141,6 @@ on:
         required: false
       AWS_DEPLOY_ROLE:
         required: false
-      GITHUB_TOKEN:
-        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
