@@ -75,22 +75,16 @@ on:
 
 jobs:
   container:
-    uses: org/repo/.github/workflows/container-image-build.yml@v1
+    uses: ukhsa-colloboration/devops-github-reusable-workflows/.github/workflows/container-image-build-python.yml@v1
     with:
-      app_name: my-service
-      service_identifier: analytics
+      app_name: frontend
+      service_identifier: my-service
       push_image: ${{ github.ref == 'refs/heads/main' }}
       release_tag: ${{ github.ref_name }}
       deploy_environments: >-
         [
           {
             "name": "dev",
-            "aws_account_id_secret": "AWS_ACCOUNT_ID_DEV",
-            "ssm_parameter_name": "/myapp/dev/image_tag",
-            "task_definition": "my-task-dev",
-            "container_name": "app",
-            "ecs_cluster": "my-cluster-dev",
-            "ecs_service": "my-service-dev",
             "base_url": "https://dev.example.com",
             "smoke_test_url": "https://dev.example.com/health"
           }
@@ -99,7 +93,7 @@ jobs:
 ```
 
 ## Regression Tests
-`_test-container-image-build.yml` reuses the workflow against a lightweight fixture in `fixtures/container_image_app`.
+`_test-container-image-build-python.yml` reuses the workflow against a lightweight fixture in `fixtures/container_image_app`.
 
 - The fixture ships with a pinned `pyproject.toml` (including `ruff` and `pytest`) and uses `tool.pytest.ini_options` so no `PYTHONPATH` overrides are required.
 - Developers get the same Python version locally thanks to the `.python-version` file in the repo root.
@@ -107,7 +101,7 @@ jobs:
 You can execute the regression workflow locally with [act](https://github.com/nektos/act):
 
 ```bash
-act pull_request -W .github/workflows/_test-container-image-build.yml --container-architecture linux/amd64
+act pull_request -W .github/workflows/_test-container-image-build-python.yml --container-architecture linux/amd64
 ```
 
 ## Surfacing Results
