@@ -142,10 +142,6 @@ on:
       AWS_DEPLOY_ROLE:
         required: false
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
   id-token: write
