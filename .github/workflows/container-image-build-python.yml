@@ -334,6 +334,7 @@ jobs:
           context: ${{ inputs.docker_context }}
           file: ${{ inputs.dockerfile }}
           push: ${{ inputs.push_image }}
+          load: ${{ inputs.push_image == false }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: ${{ inputs.push_image && format('type=registry,ref={0}/{1}/{2}:latest', env.ECR_REGISTRY_HOST, env.SERVICE_IDENTIFIER, env.APP_NAME) || '' }}
@@ -344,7 +345,7 @@ jobs:
             ${{ inputs.build_args }}
 
       - name: Run Trivy vulnerability scanner
-        if: inputs.enable_trivy && inputs.push_image
+        if: inputs.enable_trivy
         id: trivy
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
         with:
