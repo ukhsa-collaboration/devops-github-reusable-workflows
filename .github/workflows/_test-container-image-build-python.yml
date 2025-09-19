@@ -1,0 +1,49 @@
+name: "Test Container Image Build Workflow"
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/_test-container-image-build-python.yml
+      - .github/workflows/container-image-build-python.yml
+      - docs/container-image-build-python.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Execute reusable workflow
+    uses: ./.github/workflows/container-image-build-python.yml
+    with:
+      app_name: sample-app
+      ecr_namespace: reusable
+      registry_hostname: ghcr.io/example
+      docker_context: fixtures/container_image_app
+      dockerfile: fixtures/container_image_app/Dockerfile
+      run_unit_tests: true
+      unit_test_command: cd fixtures/container_image_app && pytest -q
+      lint_dockerfile: true
+      lint_python: true
+      push_image: false
+      deploy_environments: >-
+        [
+          {
+            "name": "dev",
+            "aws_account_id_secret": "AWS_ACCOUNT_ID_DEV",
+            "base_url": "https://dev.example.test",
+            "smoke_test_url": "https://dev.example.test/healthcheck"
+          },
+          {
+            "name": "uat",
+            "aws_account_id_secret": "AWS_ACCOUNT_ID_UAT",
+            "base_url": "https://uat.example.test",
+            "smoke_test_url": "https://uat.example.test/healthcheck"
+          },
+          {
+            "name": "prd",
+            "aws_account_id_secret": "AWS_ACCOUNT_ID_PRD",
+            "base_url": "https://prd.example.test",
+            "smoke_test_url": "https://prd.example.test/healthcheck"
+          }
+        ]
