@@ -522,6 +522,8 @@ jobs:
       RAW_ENVIRONMENTS: ${{ inputs.deploy_environments }}
       APP_NAME: ${{ inputs.app_name }}
       SERVICE_IDENTIFIER: ${{ inputs.service_identifier }}
+      PUSH_IMAGE: ${{ inputs.push_image }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
       - id: compute
         run: |
@@ -529,8 +531,10 @@ jobs:
           import json
           import os
 
+          push_image = (os.getenv('PUSH_IMAGE') or '').lower() == 'true'
+          release_tag = os.getenv('RELEASE_TAG') or ''
           raw = (os.getenv('RAW_ENVIRONMENTS') or '').strip()
-          if not raw:
+          if not push_image or not release_tag or not raw:
               matrix = []
           else:
               try:
@@ -576,7 +580,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        environment: ${{ fromJSON(needs.prepare-deploy.outputs.matrix) }}
+        environment: ${{ fromJSON(needs.prepare-deploy.outputs.matrix != '' && needs.prepare-deploy.outputs.matrix || '[]') }}
     environment: ${{ matrix.environment.name }}
     permissions:
       contents: read
