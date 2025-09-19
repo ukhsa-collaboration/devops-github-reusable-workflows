@@ -39,7 +39,7 @@ Reusable workflow that builds and tests a Python-based container image, surfaces
 | `enable_trivy` | boolean | `true` | Run Trivy scan when image is pushed. |
 | `sign_release` | boolean | `false` | Sign the pushed digest with Cosign during the release job. |
 
-> Additional inputs are documented inline in `.github/workflows/container-image-build.yml`.
+> Additional inputs are documented inline in `.github/workflows/container-image-build-python.yml` but are not typically changed.
 
 ## Deployment Matrix Schema
 Provide `deploy_environments` as a JSON array. Each object supports:
