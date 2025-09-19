@@ -160,6 +160,7 @@ jobs:
     timeout-minutes: 45
     env:
       ECR_REGISTRY_HOST: ${{ inputs.registry_hostname != '' && inputs.registry_hostname || format('{0}.dkr.ecr.{1}.amazonaws.com', secrets[inputs.aws_registry_account_id_secret_name], inputs.aws_region) }}
+      ECR_REGISTRY_ID: ${{ secrets[inputs.aws_registry_account_id_secret_name] }}
     permissions:
       contents: read
       id-token: write
@@ -344,6 +345,78 @@ jobs:
             APP_VERSION=${{ steps.image-version.outputs.value }}
             ${{ inputs.build_args }}
 
+      - name: Start Amazon ECR scan
+        if: inputs.push_image
+        env:
+          REPOSITORY: ${{ format('{0}/{1}', env.SERVICE_IDENTIFIER, env.APP_NAME) }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          test -n "$DIGEST" || { echo "Missing image digest" >&2; exit 1; }
+          aws ecr start-image-scan --repository-name "$REPOSITORY" --image-id imageDigest="$DIGEST" || echo "Scan already in progress"
+
+      - name: Check Amazon ECR scan findings
+        if: inputs.push_image
+        id: ecr-scan
+        env:
+          REPOSITORY: ${{ format('{0}/{1}', env.SERVICE_IDENTIFIER, env.APP_NAME) }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TARGET_SEVERITY: ${{ inputs.trivy_severity }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail_on_trivy_findings }}
+        run: |
+          set -eo pipefail
+          test -n "$DIGEST" || { echo "Missing image digest" >&2; exit 1; }
+          severities=$(echo "$TARGET_SEVERITY" | tr ',' '\n' | tr '[:lower:]' '[:upper:]')
+          if [ -z "$severities" ]; then
+            severities=$(printf 'CRITICAL\nHIGH')
+          fi
+          attempts=0
+          status="PENDING"
+          while [ $attempts -lt 20 ]; do
+            status=$(aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageDigest="$DIGEST" --query 'imageDetails[0].imageScanStatus.status' --output text)
+            if [ "$status" = "COMPLETE" ]; then
+              break
+            fi
+            if [ "$status" = "FAILED" ]; then
+              echo "Amazon ECR scan failed" >&2
+              exit 1
+            fi
+            attempts=$((attempts + 1))
+            sleep 10
+          done
+          if [ "$status" != "COMPLETE" ]; then
+            echo "Amazon ECR scan did not complete in time" >&2
+            exit 1
+          fi
+          aws ecr describe-image-scan-findings \
+            --repository-name "$REPOSITORY" \
+            --image-id imageDigest="$DIGEST" \
+            --output json > ecr-scan.json
+          result=$(python <<'PY'
+            import json
+            import os
+
+            with open('ecr-scan.json', 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
+
+            counts = data.get('imageScanFindings', {}).get('findingSeverityCounts', {})
+            target = {
+                severity.strip().upper()
+                for severity in (os.environ.get('TARGET_SEVERITY') or '').split(',')
+                if severity.strip()
+            }
+            if not target:
+                target = {'CRITICAL', 'HIGH'}
+
+            total = sum(counts.get(level, 0) for level in target)
+            print(total)
+          PY
+          )
+          echo "findings=${result}" >> "$GITHUB_OUTPUT"
+          if [ "${FAIL_ON_FINDINGS}" = "true" ] && [ "${result}" -gt 0 ]; then
+            echo "Amazon ECR scan reported findings within configured severities" >&2
+            exit 1
+          fi
+
       - name: Run Trivy vulnerability scanner
         if: inputs.enable_trivy
         id: trivy
@@ -364,6 +437,7 @@ jobs:
           UNIT_OUTCOME: ${{ steps.unit-tests.outcome || 'skipped' }}
           INT_OUTCOME: ${{ steps.integration-tests.outcome || 'skipped' }}
           TRIVY_OUTCOME: ${{ steps.trivy.outcome || 'skipped' }}
+          ECR_SCAN_OUTCOME: ${{ steps.ecr-scan.outcome || 'skipped' }}
           PUSH_IMAGE: ${{ inputs.push_image }}
           IMAGE_REF: ${{ steps.image-ref.outputs.image_ref }}
           SUMMARY_FILE: ci-summary.md
@@ -375,6 +449,7 @@ jobs:
           echo "| Unit tests | ${UNIT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Integration tests | ${INT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Trivy scan | ${TRIVY_OUTCOME} |" >> "$SUMMARY_FILE"
+          echo "| ECR scan | ${ECR_SCAN_OUTCOME} |" >> "$SUMMARY_FILE"
           if [ "$PUSH_IMAGE" = "true" ]; then
             echo "" >> "$SUMMARY_FILE"
             echo "**Image:** \\`$IMAGE_REF\\`" >> "$SUMMARY_FILE"
@@ -382,6 +457,10 @@ jobs:
           if [ "${{ steps.ruff-format.outcome || 'skipped' }}" = "failure" ] || [ "${{ steps.ruff-lint.outcome || 'skipped' }}" = "failure" ]; then
             echo "" >> "$SUMMARY_FILE"
             echo "Ruff reported issues. See the detailed logs in the 'Ruff formatting' and 'Ruff linting' steps above." >> "$SUMMARY_FILE"
+          fi
+          if [ -f ecr-scan.json ]; then
+            echo "" >> "$SUMMARY_FILE"
+            echo "Amazon ECR scan findings saved to \\`ecr-scan.json\\`." >> "$SUMMARY_FILE"
           fi
           cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
 
