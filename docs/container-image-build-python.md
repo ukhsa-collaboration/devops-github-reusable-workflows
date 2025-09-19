@@ -21,7 +21,7 @@ Reusable workflow that builds and tests a Python-based container image, surfaces
 | Input | Type | Description |
 | --- | --- | --- |
 | `app_name` | string | Application name used to name images and smoke-test messaging. |
-| `ecr_namespace` | string | Repository namespace inside the container registry. |
+| `service_identifier` | string | Identifier used for registry paths, SSM keys, and ECS resource names. |
 
 ## Frequently Used Inputs
 | Input | Type | Default | Purpose |
@@ -78,7 +78,7 @@ jobs:
     uses: org/repo/.github/workflows/container-image-build.yml@v1
     with:
       app_name: my-service
-      ecr_namespace: analytics
+      service_identifier: analytics
       push_image: ${{ github.ref == 'refs/heads/main' }}
       release_tag: ${{ github.ref_name }}
       deploy_environments: >-

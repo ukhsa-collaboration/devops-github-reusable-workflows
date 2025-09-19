@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/container-image-build-python.yml
     with:
       app_name: sample-app
-      ecr_namespace: reusable
+      service_identifier: reusable
       registry_hostname: ghcr.io/example
       docker_context: fixtures/container_image_app
       dockerfile: fixtures/container_image_app/Dockerfile

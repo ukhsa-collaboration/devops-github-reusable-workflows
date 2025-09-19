@@ -7,8 +7,8 @@ on:
         description: Name of the application; used for tagging images and smoke test messaging.
         required: true
         type: string
-      ecr_namespace:
-        description: Namespace (repository prefix) for images in the target container registry.
+      service_identifier:
+        description: Identifier used to build registry paths, deployment resource names, and SSM keys.
         required: true
         type: string
       aws_region:
@@ -155,7 +155,7 @@ permissions:
 env:
   APP_NAME: ${{ inputs.app_name }}
   AWS_REGION: ${{ inputs.aws_region }}
-  ECR_NAMESPACE: ${{ inputs.ecr_namespace }}
+  SERVICE_IDENTIFIER: ${{ inputs.service_identifier }}
 
 jobs:
   build:
@@ -295,7 +295,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f
         with:
-          images: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}
+          images: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}
           tags: |
             type=sha
             type=ref,event=branch
@@ -334,7 +334,7 @@ jobs:
           push: ${{ inputs.push_image }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: ${{ inputs.push_image && format('type=registry,ref={0}/{1}/{2}:latest', env.ECR_REGISTRY_HOST, env.ECR_NAMESPACE, env.APP_NAME) || '' }}
+          cache-from: ${{ inputs.push_image && format('type=registry,ref={0}/{1}/{2}:latest', env.ECR_REGISTRY_HOST, env.SERVICE_IDENTIFIER, env.APP_NAME) || '' }}
           cache-to: ${{ inputs.push_image && 'type=inline' || '' }}
           build-args: |
             APP_CODE_COMMIT_HASH=${{ github.sha }}
@@ -462,22 +462,22 @@ jobs:
         run: |
           test -n "$DIGEST" || { echo "Missing image digest from build"; exit 1; }
           test -n "$RELEASE_TAG" || { echo "Missing release tag"; exit 1; }
-          IMAGE_REPO="${REGISTRY_HOST}/${ECR_NAMESPACE}/${APP_NAME}"
+          IMAGE_REPO="${REGISTRY_HOST}/${SERVICE_IDENTIFIER}/${APP_NAME}"
           aws ecr batch-get-image \
             --registry-id "${ECR_REGISTRY_ID}" \
-            --repository-name "${ECR_NAMESPACE}/${APP_NAME}" \
+            --repository-name "${SERVICE_IDENTIFIER}/${APP_NAME}" \
             --image-ids imageDigest="$DIGEST" \
             --query 'images[0].imageManifest' \
             --output text > manifest.json
           aws ecr put-image \
             --registry-id "${ECR_REGISTRY_ID}" \
-            --repository-name "${ECR_NAMESPACE}/${APP_NAME}" \
+            --repository-name "${SERVICE_IDENTIFIER}/${APP_NAME}" \
             --image-tag "$RELEASE_TAG" \
             --image-manifest file://manifest.json
           if [ "${{ inputs.tag_latest }}" = "true" ]; then
             aws ecr put-image \
               --registry-id "${ECR_REGISTRY_ID}" \
-              --repository-name "${ECR_NAMESPACE}/${APP_NAME}" \
+              --repository-name "${SERVICE_IDENTIFIER}/${APP_NAME}" \
               --image-tag latest \
               --image-manifest file://manifest.json
           fi
@@ -493,7 +493,7 @@ jobs:
           DIGEST: ${{ needs.build.outputs.image_digest }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          IMAGE="${REGISTRY_HOST}/${ECR_NAMESPACE}/${APP_NAME}@${DIGEST}"
+          IMAGE="${REGISTRY_HOST}/${SERVICE_IDENTIFIER}/${APP_NAME}@${DIGEST}"
           cosign sign --yes "$IMAGE"
 
       - name: Append release notes
@@ -503,10 +503,62 @@ jobs:
             echo "Tagged \\`${{ inputs.release_tag }}\\` for \\`${{ env.APP_NAME }}\\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  prepare-deploy:
+    name: Prepare deployment environments
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.compute.outputs.matrix }}
+    env:
+      RAW_ENVIRONMENTS: ${{ inputs.deploy_environments }}
+      APP_NAME: ${{ inputs.app_name }}
+      SERVICE_IDENTIFIER: ${{ inputs.service_identifier }}
+    steps:
+      - id: compute
+        run: |
+          python <<'PY'
+          import json
+          import os
+
+          raw = (os.getenv('RAW_ENVIRONMENTS') or '').strip()
+          if not raw:
+              matrix = []
+          else:
+              try:
+                  data = json.loads(raw)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f"deploy_environments must be valid JSON: {exc}")
+              if not isinstance(data, list):
+                  raise SystemExit('deploy_environments must be a JSON array')
+              matrix = []
+              app = os.getenv('APP_NAME') or ''
+              service_identifier = os.getenv('SERVICE_IDENTIFIER') or ''
+              for item in data:
+                  if isinstance(item, str):
+                      obj = {'name': item}
+                  elif isinstance(item, dict):
+                      obj = dict(item)
+                  else:
+                      continue
+                  name = obj.get('name')
+                  if not name:
+                      continue
+                  env_lower = str(name).lower()
+                  env_upper = str(name).upper()
+                  obj.setdefault('aws_account_id_secret', f'AWS_ACCOUNT_ID_{env_upper}')
+                  obj.setdefault('container_name', 'app')
+                  obj.setdefault('task_definition', f'aw-{service_identifier}-euw2-{env_lower}-ecssvc-{app}')
+                  obj.setdefault('ecs_service', f'aw-{service_identifier}-euw2-{env_lower}-ecssvc-{app}')
+                  obj.setdefault('ecs_cluster', f'aw-{service_identifier}-euw2-{env_lower}-ecscluster')
+                  matrix.append(obj)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"matrix={json.dumps(matrix)}\n")
+          PY
+
   deploy:
     name: Deploy ${{ matrix.environment.name }}
-    needs: release
-    if: inputs.push_image && inputs.release_tag != '' && inputs.deploy_environments != '[]'
+    needs: [release, prepare-deploy]
+    if: inputs.push_image && inputs.release_tag != '' && needs.prepare-deploy.outputs.matrix != '[]'
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 45
     env:
@@ -514,7 +566,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        environment: ${{ fromJSON(inputs.deploy_environments) }}
+        environment: ${{ fromJSON(needs.prepare-deploy.outputs.matrix) }}
     environment: ${{ matrix.environment.name }}
     permissions:
       contents: read
@@ -530,10 +582,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update Parameter Store image tag
-        if: matrix.environment.ssm_parameter_name != ''
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
-          PARAMETER_NAME: ${{ matrix.environment.ssm_parameter_name }}
+          PARAMETER_NAME: ${{ matrix.environment.ssm_parameter_name || format('/{0}/{1}/image_tag', inputs.service_identifier, inputs.app_name) }}
         run: |
           test -n "$PARAMETER_NAME" || { echo "Parameter name missing"; exit 1; }
           test -n "$RELEASE_TAG" || { echo "Release tag missing"; exit 1; }
@@ -553,7 +604,7 @@ jobs:
         with:
           task-definition: task-definition.json
           container-name: ${{ matrix.environment.container_name }}
-          image: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
+          image: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
 
       - name: Deploy ECS service
         if: matrix.environment.ecs_service != '' && matrix.environment.ecs_cluster != '' && steps.render-task-def.outputs.task-definition
@@ -580,7 +631,7 @@ jobs:
         if: matrix.environment.deploy_script != ''
         env:
           DEPLOY_ENVIRONMENT: ${{ matrix.environment.name }}
-          DEPLOY_IMAGE: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
+          DEPLOY_IMAGE: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
         run: bash -eo pipefail ${{ matrix.environment.deploy_script }}
 
       - name: Run environment specific integration tests
