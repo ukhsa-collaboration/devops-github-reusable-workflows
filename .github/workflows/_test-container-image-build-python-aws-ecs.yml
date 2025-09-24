@@ -3,9 +3,9 @@ name: "Test Container Image Build Workflow - Python"
 on:
   pull_request:
     paths:
-      - .github/workflows/_test-container-image-build-python.yml
-      - .github/workflows/container-image-build-python.yml
-      - docs/container-image-build-python.md
+      - .github/workflows/_test-container-image-build-python-aws-ecs.yml
+      - .github/workflows/container-image-build-python-aws-ecs.yml
+      - docs/container-image-build-python-aws-ecs.md
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 jobs:
   regression:
     name: Execute reusable workflow
-    uses: ./.github/workflows/container-image-build-python.yml
+    uses: ./.github/workflows/container-image-build-python-aws-ecs.yml
     with:
       app_name: sample-app
       service_identifier: reusable

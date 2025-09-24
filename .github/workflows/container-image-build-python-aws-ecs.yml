@@ -206,17 +206,23 @@ jobs:
           fi
 
           if [ -n "$install_target" ]; then
+            # TODO: Once more people are using uv than note, we can use the the astral-sh/setup-uv to setup uv but at the moment it's largely unnecessary.
+            python -m pip install --upgrade uv
             if [ -n "$PIP_EXTRAS" ]; then
-              python -m pip install "${install_target}[${PIP_EXTRAS}]" || python -m pip install "$install_target"
+              uv pip install --system "${install_target}[${PIP_EXTRAS}]" || uv pip install --system "$install_target" || python -m pip install "${install_target}[${PIP_EXTRAS}]" || python -m pip install "$install_target"
             else
-              python -m pip install "$install_target"
+              uv pip install --system "$install_target" || python -m pip install "$install_target"
             fi
-          elif [ -f requirements.txt ]; then
+          fi
+
+          if [ -f requirements.txt ]; then
             python -m pip install -r requirements.txt
             if [ -f requirements-dev.txt ]; then
               python -m pip install -r requirements-dev.txt
             fi
-          elif [ -n "$DOCKER_CONTEXT" ] && [ -f "$DOCKER_CONTEXT/requirements.txt" ]; then
+          fi
+
+          if [ -n "$DOCKER_CONTEXT" ] && [ "$DOCKER_CONTEXT" != "." ] && [ -f "$DOCKER_CONTEXT/requirements.txt" ]; then
             python -m pip install -r "$DOCKER_CONTEXT/requirements.txt"
             if [ -f "$DOCKER_CONTEXT/requirements-dev.txt" ]; then
               python -m pip install -r "$DOCKER_CONTEXT/requirements-dev.txt"
@@ -345,78 +351,17 @@ jobs:
             APP_VERSION=${{ steps.image-version.outputs.value }}
             ${{ inputs.build_args }}
 
-      - name: Start Amazon ECR scan
-        if: inputs.push_image
+      - name: Run Snyk to check for vulnerabilities
+        if: inputs.enable_trivy
+        uses: snyk/actions/python@e2221410bff24446ba09102212d8bc75a567237d
+        id: snyk
         env:
-          REPOSITORY: ${{ format('{0}/{1}', env.SERVICE_IDENTIFIER, env.APP_NAME) }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          test -n "$DIGEST" || { echo "Missing image digest" >&2; exit 1; }
-          aws ecr start-image-scan --repository-name "$REPOSITORY" --image-id imageDigest="$DIGEST" || echo "Scan already in progress"
-
-      - name: Check Amazon ECR scan findings
-        if: inputs.push_image
-        id: ecr-scan
-        env:
-          REPOSITORY: ${{ format('{0}/{1}', env.SERVICE_IDENTIFIER, env.APP_NAME) }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-          TARGET_SEVERITY: ${{ inputs.trivy_severity }}
-          FAIL_ON_FINDINGS: ${{ inputs.fail_on_trivy_findings }}
-        run: |
-          set -eo pipefail
-          test -n "$DIGEST" || { echo "Missing image digest" >&2; exit 1; }
-          severities=$(echo "$TARGET_SEVERITY" | tr ',' '\n' | tr '[:lower:]' '[:upper:]')
-          if [ -z "$severities" ]; then
-            severities=$(printf 'CRITICAL\nHIGH')
-          fi
-          attempts=0
-          status="PENDING"
-          while [ $attempts -lt 20 ]; do
-            status=$(aws ecr describe-images --repository-name "$REPOSITORY" --image-ids imageDigest="$DIGEST" --query 'imageDetails[0].imageScanStatus.status' --output text)
-            if [ "$status" = "COMPLETE" ]; then
-              break
-            fi
-            if [ "$status" = "FAILED" ]; then
-              echo "Amazon ECR scan failed" >&2
-              exit 1
-            fi
-            attempts=$((attempts + 1))
-            sleep 10
-          done
-          if [ "$status" != "COMPLETE" ]; then
-            echo "Amazon ECR scan did not complete in time" >&2
-            exit 1
-          fi
-          aws ecr describe-image-scan-findings \
-            --repository-name "$REPOSITORY" \
-            --image-id imageDigest="$DIGEST" \
-            --output json > ecr-scan.json
-          result=$(python <<'PY'
-            import json
-            import os
-
-            with open('ecr-scan.json', 'r', encoding='utf-8') as fh:
-                data = json.load(fh)
-
-            counts = data.get('imageScanFindings', {}).get('findingSeverityCounts', {})
-            target = {
-                severity.strip().upper()
-                for severity in (os.environ.get('TARGET_SEVERITY') or '').split(',')
-                if severity.strip()
-            }
-            if not target:
-                target = {'CRITICAL', 'HIGH'}
-
-            total = sum(counts.get(level, 0) for level in target)
-            print(total)
-          PY
-          )
-          echo "findings=${result}" >> "$GITHUB_OUTPUT"
-          if [ "${FAIL_ON_FINDINGS}" = "true" ] && [ "${result}" -gt 0 ]; then
-            echo "Amazon ECR scan reported findings within configured severities" >&2
-            exit 1
-          fi
-
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+        with:
+          command: container test ${{ steps.image-ref.outputs.image_ref }}
+          args: --fail-on=patchable --severity-threshold=high --file=${{ env.DOCKERFILE }}
+    
       - name: Run Trivy vulnerability scanner
         if: inputs.enable_trivy
         id: trivy
@@ -436,8 +381,7 @@ jobs:
           HADOLINT_OUTCOME: ${{ steps.hadolint.outcome || 'skipped' }}
           UNIT_OUTCOME: ${{ steps.unit-tests.outcome || 'skipped' }}
           INT_OUTCOME: ${{ steps.integration-tests.outcome || 'skipped' }}
-          TRIVY_OUTCOME: ${{ steps.trivy.outcome || 'skipped' }}
-          ECR_SCAN_OUTCOME: ${{ steps.ecr-scan.outcome || 'skipped' }}
+          SNYK_OUTCOME: ${{ steps.snyk.outcome || 'skipped' }}
           PUSH_IMAGE: ${{ inputs.push_image }}
           IMAGE_REF: ${{ steps.image-ref.outputs.image_ref }}
           SUMMARY_FILE: ci-summary.md
@@ -448,8 +392,7 @@ jobs:
           echo "| Dockerfile lint | ${HADOLINT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Unit tests | ${UNIT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Integration tests | ${INT_OUTCOME} |" >> "$SUMMARY_FILE"
-          echo "| Trivy scan | ${TRIVY_OUTCOME} |" >> "$SUMMARY_FILE"
-          echo "| ECR scan | ${ECR_SCAN_OUTCOME} |" >> "$SUMMARY_FILE"
+          echo "| Snyk scan | ${TRIVY_OUTCOME} |" >> "$SUMMARY_FILE"
           if [ "$PUSH_IMAGE" = "true" ]; then
             echo "" >> "$SUMMARY_FILE"
             echo "**Image:** \\`$IMAGE_REF\\`" >> "$SUMMARY_FILE"
@@ -457,10 +400,6 @@ jobs:
           if [ "${{ steps.ruff-format.outcome || 'skipped' }}" = "failure" ] || [ "${{ steps.ruff-lint.outcome || 'skipped' }}" = "failure" ]; then
             echo "" >> "$SUMMARY_FILE"
             echo "Ruff reported issues. See the detailed logs in the 'Ruff formatting' and 'Ruff linting' steps above." >> "$SUMMARY_FILE"
-          fi
-          if [ -f ecr-scan.json ]; then
-            echo "" >> "$SUMMARY_FILE"
-            echo "Amazon ECR scan findings saved to \\`ecr-scan.json\\`." >> "$SUMMARY_FILE"
           fi
           cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
 
