@@ -86,6 +86,11 @@ on:
         required: false
         default: true
         type: boolean
+      enable_snyk:
+        description: Run snyk against the pushed container image.
+        required: false
+        default: false
+        type: boolean
       sign_release:
         description: Sign the release image digest with Cosign.
         required: false
@@ -352,7 +357,7 @@ jobs:
             ${{ inputs.build_args }}
 
       - name: Run Snyk to check for vulnerabilities
-        if: inputs.enable_trivy
+        if: inputs.enable_snyk
         uses: snyk/actions/python@e2221410bff24446ba09102212d8bc75a567237d
         id: snyk
         env:
@@ -382,6 +387,7 @@ jobs:
           UNIT_OUTCOME: ${{ steps.unit-tests.outcome || 'skipped' }}
           INT_OUTCOME: ${{ steps.integration-tests.outcome || 'skipped' }}
           SNYK_OUTCOME: ${{ steps.snyk.outcome || 'skipped' }}
+          TRIVY_OUTCOME: ${{ steps.trivy.outcome || 'skipped' }}
           PUSH_IMAGE: ${{ inputs.push_image }}
           IMAGE_REF: ${{ steps.image-ref.outputs.image_ref }}
           SUMMARY_FILE: ci-summary.md
@@ -392,7 +398,8 @@ jobs:
           echo "| Dockerfile lint | ${HADOLINT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Unit tests | ${UNIT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Integration tests | ${INT_OUTCOME} |" >> "$SUMMARY_FILE"
-          echo "| Snyk scan | ${TRIVY_OUTCOME} |" >> "$SUMMARY_FILE"
+          echo "| Snyk scan | ${SNYK_OUTCOME} |" >> "$SUMMARY_FILE"
+          echo "| Trivy scan | ${TRIVY_OUTCOME} |" >> "$SUMMARY_FILE"
           if [ "$PUSH_IMAGE" = "true" ]; then
             echo "" >> "$SUMMARY_FILE"
             echo "**Image:** \\`$IMAGE_REF\\`" >> "$SUMMARY_FILE"
