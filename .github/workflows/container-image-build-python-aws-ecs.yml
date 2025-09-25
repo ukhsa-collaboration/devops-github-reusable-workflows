@@ -294,7 +294,7 @@ jobs:
         if: inputs.push_image || (inputs.release_tag != '' && inputs.deploy_environments != '[]')
         uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355
         with:
-          role-to-assume: arn:aws:iam::${{ secrets[inputs.aws_registry_account_id_secret_name] }}:role/${{ secrets[inputs.aws_deploy_role_secret_name] }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID_DEV }}:role/${{ secrets[inputs.aws_deploy_role_secret_name] }}
           role-session-name: container-build-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
