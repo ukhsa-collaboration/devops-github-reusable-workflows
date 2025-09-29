@@ -458,9 +458,9 @@ jobs:
           exit 1
 
   release:
-    name: Tag pushed image
+    name: Release Image
     needs: build
-    if: inputs.push_image && inputs.release_tag != ''
+    if: inputs.push_image && inputs.release_tag != '' && inputs.sign_release
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 15
     env:
@@ -485,35 +485,6 @@ jobs:
         with:
           registries: "${{ env.ECR_REGISTRY_ID }}"
 
-      - name: Retag digest with release tag
-        id: retag
-        env:
-          DIGEST: ${{ needs.build.outputs.image_digest }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          REGISTRY_HOST: ${{ env.ECR_REGISTRY_HOST }}
-        run: |
-          test -n "$DIGEST" || { echo "Missing image digest from build"; exit 1; }
-          test -n "$RELEASE_TAG" || { echo "Missing release tag"; exit 1; }
-          IMAGE_REPO="${REGISTRY_HOST}/${SERVICE_IDENTIFIER}/${APP_NAME}"
-          aws ecr batch-get-image \
-            --registry-id "${ECR_REGISTRY_ID}" \
-            --repository-name "${SERVICE_IDENTIFIER}/${APP_NAME}" \
-            --image-ids imageDigest="$DIGEST" \
-            --query 'images[0].imageManifest' \
-            --output text > manifest.json
-          aws ecr put-image \
-            --registry-id "${ECR_REGISTRY_ID}" \
-            --repository-name "${SERVICE_IDENTIFIER}/${APP_NAME}" \
-            --image-tag "$RELEASE_TAG" \
-            --image-manifest file://manifest.json
-          if [ "${{ inputs.tag_latest }}" = "true" ]; then
-            aws ecr put-image \
-              --registry-id "${ECR_REGISTRY_ID}" \
-              --repository-name "${SERVICE_IDENTIFIER}/${APP_NAME}" \
-              --image-tag latest \
-              --image-manifest file://manifest.json
-          fi
-
       - name: Install cosign
         if: inputs.sign_release
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159
@@ -532,7 +503,7 @@ jobs:
         run: |
           {
             echo "### Image Release"
-            echo "Tagged \\`${{ inputs.release_tag }}\\` for \\`${{ env.APP_NAME }}\\`"
+            echo "Tagged ${{ inputs.release_tag }} for ${{ env.APP_NAME }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   prepare-deploy:

@@ -17,4 +17,4 @@ This repository contains several reusable GitHub Actions workflows. Below is an 
 
 - Each workflow has a matching `_test-*.yml` regression workflow. These tests exercise the reusable workflow with lightweight fixtures so breaking changes surface before release.
 - `_skip_test-*.yml` workflows are intentional noops used to satisfy branch protection rules when a workflow must report success even if the full regression run is skipped.
-- Run the associated regression workflow locally with [`act`](https://github.com/nektos/act) (e.g. `act pull_request -W .github/workflows/_test-container-image-build.yml --container-architecture linux/amd64`) before pushing updates.
+- Run the associated regression workflow locally with [`act`](https://github.com/nektos/act) (e.g. `act pull_request -W .github/workflows/_test-container-image-build-python-aws-ecs.yml --container-architecture linux/amd64`) before pushing updates.
