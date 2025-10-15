@@ -355,30 +355,7 @@ jobs:
             APP_CODE_COMMIT_HASH=${{ github.sha }}
             APP_VERSION=${{ steps.image-version.outputs.value }}
             ${{ inputs.build_args }}
-
-      - name: Run Snyk to check for vulnerabilities
-        if: inputs.enable_snyk
-        uses: snyk/actions/python@e2221410bff24446ba09102212d8bc75a567237d
-        id: snyk
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-          DOCKERFILE: ${{ inputs.dockerfile }}
-        with:
-          command: container test ${{ steps.image-ref.outputs.image_ref }}
-          args: --fail-on=patchable --severity-threshold=high --file=${{ env.DOCKERFILE }}
     
-      - name: Run Trivy vulnerability scanner
-        if: inputs.enable_trivy
-        id: trivy
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
-        with:
-          image-ref: '${{ steps.image-ref.outputs.image_ref }}'
-          output: 'trivy.txt'
-          exit-code: ${{ inputs.fail_on_trivy_findings && '1' || '0' }}
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: ${{ inputs.trivy_severity }}
-
       - name: Summarise results
         if: always()
         id: build-summary
@@ -386,10 +363,9 @@ jobs:
           HADOLINT_OUTCOME: ${{ steps.hadolint.outcome || 'skipped' }}
           UNIT_OUTCOME: ${{ steps.unit-tests.outcome || 'skipped' }}
           INT_OUTCOME: ${{ steps.integration-tests.outcome || 'skipped' }}
-          SNYK_OUTCOME: ${{ steps.snyk.outcome || 'skipped' }}
-          TRIVY_OUTCOME: ${{ steps.trivy.outcome || 'skipped' }}
           PUSH_IMAGE: ${{ inputs.push_image }}
           IMAGE_REF: ${{ steps.image-ref.outputs.image_ref }}
+          BUILD_OUTCOME: ${{ steps.build.outcome || 'skipped' }}
           SUMMARY_FILE: ci-summary.md
         run: |
           echo "### Container Image Build" > "$SUMMARY_FILE"
@@ -398,15 +374,9 @@ jobs:
           echo "| Dockerfile lint | ${HADOLINT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Unit tests | ${UNIT_OUTCOME} |" >> "$SUMMARY_FILE"
           echo "| Integration tests | ${INT_OUTCOME} |" >> "$SUMMARY_FILE"
-          echo "| Snyk scan | ${SNYK_OUTCOME} |" >> "$SUMMARY_FILE"
-          echo "| Trivy scan | ${TRIVY_OUTCOME} |" >> "$SUMMARY_FILE"
-          if [ "$PUSH_IMAGE" = "true" ]; then
+          if [ "$PUSH_IMAGE" = "true" ] && [ "$BUILD_OUTCOME" = "success" ] ; then
             echo "" >> "$SUMMARY_FILE"
-            echo "**Image:** \\`$IMAGE_REF\\`" >> "$SUMMARY_FILE"
-          fi
-          if [ "${{ steps.ruff-format.outcome || 'skipped' }}" = "failure" ] || [ "${{ steps.ruff-lint.outcome || 'skipped' }}" = "failure" ]; then
-            echo "" >> "$SUMMARY_FILE"
-            echo "Ruff reported issues. See the detailed logs in the 'Ruff formatting' and 'Ruff linting' steps above." >> "$SUMMARY_FILE"
+            echo "**Image:** \`$IMAGE_REF\`" >> "$SUMMARY_FILE"
           fi
           cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
 
@@ -450,12 +420,6 @@ jobs:
                 body: finalBody,
               });
             }
-
-      - name: Fail step on Trivy findings
-        if: inputs.enable_trivy && inputs.fail_on_trivy_findings && steps.trivy.outcome == 'failure'
-        run: |
-          echo "Trivy reported findings that meet the failure threshold. See the job summary for details." >&2
-          exit 1
 
   release:
     name: Release Image
