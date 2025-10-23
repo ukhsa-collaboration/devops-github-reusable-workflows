@@ -71,12 +71,28 @@ jobs:
     outputs:
       filtered_matrix: ${{ steps.filter_matrix.outputs.filtered_matrix }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: __workflow
+          fetch-depth: 1
+          sparse-checkout: |
+            .github
+      - name: Register workflow scripts path
+        run: echo "WORKFLOW_SCRIPTS_DIR=$GITHUB_WORKSPACE/__workflow/.github/scripts" >> $GITHUB_ENV
+
       - name: Filter Stacks
         env:
           ENVIRONMENT_NAME: ${{ inputs.environment_name }}
           STACK_CONFIG_JSON: '${{ needs.define_matrix.outputs.stack_config }}'
         id: filter_matrix
-        run: $GITHUB_WORKSPACE/.github/scripts/common/filter-stacks.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-plan/filter-stacks.sh
 
   plan:
     name: Plan Terraform
@@ -105,11 +121,27 @@ jobs:
       matrix:
         stack: "${{ fromJSON(needs.filter_matrix.outputs.filtered_matrix) }}"
     steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.REPO_SSH_DEPLOY_KEY }}
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: __workflow
+          fetch-depth: 1
+          sparse-checkout: |
+            .github
+      - name: Register workflow scripts path
+        run: echo "WORKFLOW_SCRIPTS_DIR=$GITHUB_WORKSPACE/__workflow/.github/scripts" >> $GITHUB_ENV
+
       - name: Export variables
         id: variables
         env:
           STACK_DIRECTORY: ${{ matrix.stack.directory }}
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-plan/export-state-name-output.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-plan/export-state-name-output.sh
 
       - uses: actions/download-artifact@v4
         id: download
@@ -120,14 +152,14 @@ jobs:
       - name: Check if there are any changes
         working-directory: ${{ steps.download.outputs.download-path }}
         id: changes
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-plan/check-planned-changes.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-plan/check-planned-changes.sh
   
       - name: Decrypt Terraform Plan
         working-directory: ${{ steps.download.outputs.download-path }}
         if: steps.changes.outputs.planned_changes == 'true'
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-plan/decrypt-plan.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-plan/decrypt-plan.sh
   
       - name: Comment plan on PR
         uses: actions/github-script@v7
@@ -136,5 +168,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           script: |
-            const script = require('$GITHUB_WORKSPACE/.github/scripts/terraform-core/encrypt-terraform-plan.sh')
+            const script = require('${{ env.WORKFLOW_SCRIPTS_DIR }}/terraform-core/encrypt-terraform-plan.sh')
             console.log(script({github, context}))

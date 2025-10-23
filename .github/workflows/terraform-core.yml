@@ -130,16 +130,29 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
 
+      - name: Checkout workflow utilities
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: __workflow
+          fetch-depth: 1
+          sparse-checkout: |
+            .github
+
+      - name: Register workflow scripts path
+        run: echo "WORKFLOW_SCRIPTS_DIR=$GITHUB_WORKSPACE/__workflow/.github/scripts" >> $GITHUB_ENV
+
       - name: Export variables
         env:
           STACK_DIRECTORY: ${{ matrix.stack.directory }}
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/export-state-name.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/export-state-name.sh
 
       - name: Export user provided Terraform variables
         if: ${{ inputs.other_variables != '' }}
         env:
           RAW_TERRAFORM_VARS: ${{ inputs.other_variables }}
-        run: python3 $GITHUB_WORKSPACE/.github/scripts/terraform-core/export-user-variables.py
+        run: python3 $WORKFLOW_SCRIPTS_DIR/terraform-core/export-user-variables.py
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -172,7 +185,7 @@ jobs:
       - name: Copy required files from root directory
         env:
           DIRECTORY: "${{ matrix.stack.directory }}"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/copy-required-files.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/copy-required-files.sh
 
       - name: Decide which Terraform version to use based on constraints
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.1
@@ -189,16 +202,16 @@ jobs:
       - name: Determine Backend Type
         working-directory: "${{ matrix.stack.directory }}"
         id: backend
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/determine-backend-type.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/determine-backend-type.sh
 
       - name: Add SSH deploy key to ssh-agent
         env:
           SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY != '' && secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}
           SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/add-ssh-deploy-key.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/add-ssh-deploy-key.sh
 
       - name: Configure Terraform plugin cache
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/configure-plugin-cache.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/configure-plugin-cache.sh
 
       - name: Cache Terraform providers
         uses: actions/cache@v4
@@ -218,7 +231,7 @@ jobs:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.stack.directory }}"
           TF_VERSION: "${{ steps.terraform_version.outputs.tf_version }}"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-init-s3.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/terraform-init-s3.sh
 
       - name: Terraform Init with Azure Backend
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
@@ -232,7 +245,7 @@ jobs:
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           AZURE_RESOURCE_GROUP_NAME: "${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-init-azure.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/terraform-init-azure.sh
 
       - name: Find Terraform variables
         id: variables
@@ -240,7 +253,7 @@ jobs:
         env:
           DIRECTORY: "${{ matrix.stack.directory }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/find-terraform-variables.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/find-terraform-variables.sh
 
 
       - name: Terraform Plan
@@ -257,7 +270,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TERRAFORM_ACTION: ${{ inputs.terraform_action }}
           SKIP_DESTROY: "${{ matrix.stack.skip_when_destroying }}"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-plan.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/terraform-plan.sh
 
       - name: Update stack matrix
         working-directory: "${{ matrix.stack.directory }}"
@@ -267,7 +280,7 @@ jobs:
           PLANNED_CHANGES: ${{ steps.tf_plan.outputs.planned_changes }}
           STACK_ORDER: ${{ matrix.stack.order }}
           SKIP_WHEN_DESTROYING: ${{ matrix.stack.skip_when_destroying }}
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/update-stack-matrix.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/update-stack-matrix.sh
   
       - name: Terraform Apply
         # We don't want to apply if there are no planned changes OR if we're destroying and
@@ -286,7 +299,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: "${{ secrets.GH_TOKEN }}"
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-apply.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/terraform-apply.sh
 
       - name: Encrypt Terraform plan
         id: encrypt_plan
@@ -294,7 +307,7 @@ jobs:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         working-directory: "${{ matrix.stack.directory }}"
         if: ${{ inputs.upload_plan && steps.tf_plan.conclusion != 'skipped' && steps.tf_plan.outputs.planned_changes == 'true' }}
-        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/encrypt-terraform-plan.sh
+        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/encrypt-terraform-plan.sh
 
       - name: Upload Job Artefacts
         uses: actions/upload-artifact@v4
