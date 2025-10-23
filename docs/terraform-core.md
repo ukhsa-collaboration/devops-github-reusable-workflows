@@ -28,6 +28,8 @@ This workflow is generally not intended to be called directly by users. Instead,
 
 `runner_label` (optional, default: ubuntu-latest): Specifies the runner for job execution. Use "self-hosted" for custom runners.
 
+`other_variables` (optional, default: {}): JSON map of additional Terraform variables to export as `TF_VAR_*` environment variables, useful for securely passing sensitive values from the caller.
+
 #### Secrets
 
 `AWS_ROLE_NAME, AWS_ACCOUNT_ID` (optional): AWS credentials for interaction with AWS resources.

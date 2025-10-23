@@ -74,22 +74,9 @@ jobs:
       - name: Filter Stacks
         env:
           ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          STACK_CONFIG_JSON: '${{ needs.define_matrix.outputs.stack_config }}'
         id: filter_matrix
-        run: |
-          echo '${{ needs.define_matrix.outputs.stack_config }}' > initial_matrix.json
-          
-          filtered_matrix=$(jq -c --arg env_name "${ENVIRONMENT_NAME}" '
-          [ .[]
-            | select(.planned_changes == true)
-            | if .runner_label == "self-hosted"
-              then .runner_label = ["self-hosted", $env_name]
-              else .
-              end
-          ]
-          ' initial_matrix.json)
-
-          echo "Filtered Matrix: $filtered_matrix"
-          echo "filtered_matrix=$filtered_matrix" >> $GITHUB_OUTPUT
+        run: $GITHUB_WORKSPACE/.github/scripts/common/filter-stacks.sh
 
   plan:
     name: Plan Terraform
@@ -120,8 +107,9 @@ jobs:
     steps:
       - name: Export variables
         id: variables
-        run: | 
-          echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_OUTPUT
+        env:
+          STACK_DIRECTORY: ${{ matrix.stack.directory }}
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-plan/export-state-name-output.sh
 
       - uses: actions/download-artifact@v4
         id: download
@@ -132,21 +120,14 @@ jobs:
       - name: Check if there are any changes
         working-directory: ${{ steps.download.outputs.download-path }}
         id: changes
-        run: |
-          planned_changes=$(jq -r '.planned_changes' updated_matrix.json)
-
-          echo "DEBUG: planned_changes: $planned_changes"
-          echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-plan/check-planned-changes.sh
   
       - name: Decrypt Terraform Plan
         working-directory: ${{ steps.download.outputs.download-path }}
         if: steps.changes.outputs.planned_changes == 'true'
         env:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
-        run: |
-          pass_file=$(mktemp)
-          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          gpg --decrypt --batch --passphrase-file "$pass_file" --out tfplan.json tfplan.json.gpg
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-plan/decrypt-plan.sh
   
       - name: Comment plan on PR
         uses: actions/github-script@v7
@@ -155,100 +136,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            const environment = "${{ inputs.environment_name }}";
-            const stack = "${{ steps.variables.outputs.state_name }}";
-
-            try {
-              const issue_number = context.payload.pull_request.number;
-              const owner = context.repo.owner;
-              const repo = context.repo.repo;
-              const commentIdentifier = `<!-- planComment-${environment}-${stack} -->`;
-              const filePath = path.join(process.env.GITHUB_WORKSPACE, environment, stack, 'tfplan.json');
-
-              if (!fs.existsSync(filePath)) {
-                console.log(`❌ Terraform plan file not found: ${filePath}`);
-                core.setFailed('Terraform plan file not found.');
-                return;
-              }
-
-              const fileContent = fs.readFileSync(filePath, 'utf8');
-
-              let planJson;
-              try {
-                planJson = JSON.parse(fileContent);
-              } catch (parseError) {
-                core.setFailed(`Failed to parse tfplan.json: ${parseError.message}`);
-                return;
-              }
-
-              const summary = { create: [], update: [], delete: [], replace: [] };
-
-              const changes = planJson.resource_changes || [];
-              changes.forEach(change => {
-                const address = change.address;
-                const actions = change.change.actions;
-                // If the actions include both delete and create, it's a replacement.
-                if (actions.includes("delete") && actions.includes("create")) {
-                  summary.replace.push(address);
-                } else if (actions.includes("create")) {
-                  summary.create.push(address);
-                } else if (actions.includes("update")) {
-                  summary.update.push(address);
-                } else if (actions.includes("delete")) {
-                  summary.delete.push(address);
-                }
-              });
-
-              let summaryText = `### Terraform Plan Summary (${environment.toUpperCase()}/${stack.toUpperCase()})\n\n`;
-              if (summary.delete.length > 0) {
-                summaryText += `🔴 **Resources to be destroyed:**\n${summary.delete.map(addr => `- ${addr}`).join("\n")}\n\n`;
-              }
-              if (summary.update.length > 0) {
-                summaryText += `🟡 **Resources to be updated:**\n${summary.update.map(addr => `- ${addr}`).join("\n")}\n\n`;
-              }
-              if (summary.create.length > 0) {
-                summaryText += `🟢 **Resources to be created:**\n${summary.create.map(addr => `- ${addr}`).join("\n")}\n\n`;
-              }
-              if (summary.replace.length > 0) {
-                summaryText += `🟣 **Resources to be replaced:**\n${summary.replace.map(addr => `- ${addr}`).join("\n")}\n\n`;
-              }
-              if (summary.update.length == 0 && summary.delete.length == 0 && summary.create.length == 0 && summary.replace.length == 0) {
-                summaryText += `👌 **No resources will be changed**\n\n`;
-                // This block of code should be unreachable because planned_changes should be false and this
-                // Github Actions step should be skipped.
-              }
-
-              // Append the comment identifier so that subsequent runs can update the correct comment.
-              summaryText += commentIdentifier;
-
-              const comments = await github.rest.issues.listComments({
-                owner,
-                repo,
-                issue_number,
-              });
-
-              const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
-
-              if (botComment) {
-                await github.rest.issues.updateComment({
-                  owner,
-                  repo,
-                  comment_id: botComment.id,
-                  body: summaryText,
-                });
-                console.log(`✅ Updated existing PR comment for environment: ${environment} / stack: ${stack}`);
-              } else {
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number,
-                  body: summaryText,
-                });
-                console.log(`✅ Created a new PR comment for environment: ${environment} / stack: ${stack}`);
-              }
-            } catch (error) {
-              core.setFailed(`🚨 Failed to comment on PR for environment ${environment}: ${error.message}`);
-            }
+            const script = require('$GITHUB_WORKSPACE/.github/scripts/terraform-core/encrypt-terraform-plan.sh')
+            console.log(script({github, context}))

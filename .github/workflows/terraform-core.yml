@@ -59,6 +59,11 @@ on:
         type: string
         default: "nonexistentfile.txt"
         description: "If there are artefacts created from data sources, specify the path from the TF stack dir here so they are uploaded before applying"
+      other_variables:
+        required: false
+        type: string
+        default: "{}"
+        description: "JSON map of additional Terraform variables to export as TF_VAR_* environment variables"
     secrets:
       AWS_ROLE_NAME:
         required: false
@@ -126,8 +131,15 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Export variables
-        run: | 
-          echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
+        env:
+          STACK_DIRECTORY: ${{ matrix.stack.directory }}
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/export-state-name.sh
+
+      - name: Export user provided Terraform variables
+        if: ${{ inputs.other_variables != '' }}
+        env:
+          RAW_TERRAFORM_VARS: ${{ inputs.other_variables }}
+        run: python3 $GITHUB_WORKSPACE/.github/scripts/terraform-core/export-user-variables.py
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -160,17 +172,7 @@ jobs:
       - name: Copy required files from root directory
         env:
           DIRECTORY: "${{ matrix.stack.directory }}"
-        run: |
-          files_to_copy=("providers.tf" "terraform.tf")
-
-          for FILE in "${files_to_copy[@]}"; do
-            if [[ ! -f "$DIRECTORY"/"$FILE" ]]; then
-                echo "NOTE - $(basename "$DIRECTORY") will attempt to use the "$FILE" file in the root directory"
-                cp "$FILE" "$DIRECTORY"/ || exit 1
-            else
-              echo "NOTE - $(basename "$DIRECTORY") has its own "$FILE" file. Not copying "$FILE" from root"
-            fi
-          done
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/copy-required-files.sh
 
       - name: Decide which Terraform version to use based on constraints
         uses: ukhsa-collaboration/devops-github-actions/.github/actions/parse-terraform-version@v0.9.1
@@ -187,30 +189,16 @@ jobs:
       - name: Determine Backend Type
         working-directory: "${{ matrix.stack.directory }}"
         id: backend
-        run: |
-          backend_type=$(grep -oP 'backend\s+"?\K[^"\s]+' ./backend.tf)
-          echo "DEBUG: Determined backend type: $backend_type"
-          echo "backend_type=$backend_type" >> $GITHUB_OUTPUT
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/determine-backend-type.sh
 
       - name: Add SSH deploy key to ssh-agent
         env:
           SSH_DEPLOY_KEY: ${{ secrets.TF_MODULES_SSH_DEPLOY_KEY != '' && secrets.TF_MODULES_SSH_DEPLOY_KEY || secrets.SSH_DEPLOY_KEY }}
           SSH_AUTH_SOCK: "/tmp/ssh_agent.sock"
-        run: |
-          # Add SSH deploy key to ssh-agent to allow Terraform modules from private repos to be downloaded during terraform init.
-          if [ -n "$SSH_DEPLOY_KEY" ]; then
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-            eval $(ssh-agent -a $SSH_AUTH_SOCK -s)
-            echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
-          fi
-          
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/add-ssh-deploy-key.sh
 
       - name: Configure Terraform plugin cache
-        run: |
-          echo "TF_PLUGIN_CACHE_DIR=$HOME/.terraform.d/plugin-cache" >>"$GITHUB_ENV"
-          mkdir --parents "$HOME/.terraform.d/plugin-cache"
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/configure-plugin-cache.sh
 
       - name: Cache Terraform providers
         uses: actions/cache@v4
@@ -230,27 +218,7 @@ jobs:
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
           DIRECTORY: "${{ matrix.stack.directory }}"
           TF_VERSION: "${{ steps.terraform_version.outputs.tf_version }}"
-        run: |
-          s3_key="${ENVIRONMENT_NAME}"/"$state_name"/terraform.tfstate
-          s3_bucket=${AWS_ACCOUNT_ID}-${AWS_REGION}-state
-          echo "DEBUG: State will be persisted to: s3://$s3_bucket/$s3_key"
-          # `dynamodb_table` is deprecated by Terraform from verison 1.11.0 . Use the new use_lockfile
-          # flag if the Terraform version supports it.
-          # TODO: Remove this conditional in future. 
-          if [ "$(printf '%s\n' "1.11.0" "$TF_VERSION" | sort -V | head -n1)" = "1.11.0" ]; then
-            echo "DEBUG: Will use native S3 locking to lock Terraform state"
-            terraform init \
-            -backend-config=use_lockfile=true \
-            -backend-config=bucket="${s3_bucket}" \
-            -backend-config=key="${s3_key}"
-          else
-            echo "DEBUG: Will use DynamoDB table to lock Terraform state"
-            dynamodb_table=${AWS_REGION}-state-locks
-            terraform init \
-              -backend-config=dynamodb_table="${dynamodb_table}" \
-              -backend-config=bucket="${s3_bucket}" \
-              -backend-config=key="${s3_key}"
-          fi
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-init-s3.sh
 
       - name: Terraform Init with Azure Backend
         if: ${{ steps.backend.outputs.backend_type == 'azurerm' }}
@@ -262,15 +230,9 @@ jobs:
           ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-        run: |
-          # Container name needs to be a valid DNS name with less than 63 characters.
-          container_name=$(dirname "$DIRECTORY" | tr -cd '[:alnum:]-' | cut -c1-62)
-          storage_account_name=$(echo "${{ secrets.AZURE_SUBSCRIPTION_ID }}" | tr -d '-' | cut -c 1-12)state
-          terraform init \
-            -backend-config=storage_account_name="${storage_account_name}" \
-            -backend-config=container_name="$container_name" \
-            -backend-config=key=$ENVIRONMENT_NAME/"$state_name"/terraform.tfstate \
-            -backend-config=resource_group_name="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
+          AZURE_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          AZURE_RESOURCE_GROUP_NAME: "${{ secrets.AZURE_RESOURCE_GROUP_NAME }}"
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-init-azure.sh
 
       - name: Find Terraform variables
         id: variables
@@ -278,38 +240,7 @@ jobs:
         env:
           DIRECTORY: "${{ matrix.stack.directory }}"
           ENVIRONMENT_NAME: "${{ inputs.environment_name }}"
-        run: |
-          find_app_var_files() {
-            local dir="$1"
-            # Search for a environment-specific .tfvars file in the specified directory's tfvars folder.
-            local tfvars
-            tfvars=$(find "./$dir/tfvars/" -maxdepth 1 -name "*${ENVIRONMENT_NAME}.tfvars" -print -quit 2>/dev/null)
-            if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f "$tfvars")"
-            fi
-          }
-
-          find_env_var_files() {
-            local tfvars="./environment/${ENVIRONMENT_NAME}.tfvars"
-            if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f "$tfvars")"
-            fi
-          }
-
-          find_global_var_file() {
-            local tfvars="globals.tfvars"
-            if [[ -f "$tfvars" ]]; then
-              echo "-var-file=$(readlink -f "$tfvars")"
-            fi
-          }
-
-          global_vars_file=$(find_global_var_file)
-          app_var_file=$(find_app_var_files "$DIRECTORY")
-          env_var_file=$(find_env_var_files)
-          full_variable_flags="$global_vars_file $app_var_file $env_var_file"
-
-          echo "DEBUG: Will use variables: $full_variable_flags"
-          echo "tf_vars=$full_variable_flags" >> $GITHUB_OUTPUT
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/find-terraform-variables.sh
 
 
       - name: Terraform Plan
@@ -326,67 +257,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TERRAFORM_ACTION: ${{ inputs.terraform_action }}
           SKIP_DESTROY: "${{ matrix.stack.skip_when_destroying }}"
-        run: |
-          set -euo pipefail
-
-          terraform_exit_code=0
-          # Determine whether to plan a destroy or a regular plan.
-          if [[ "$TERRAFORM_ACTION" == "destroy" ]]; then
-            if [[ "$SKIP_DESTROY" == "false" ]]; then
-              echo "DEBUG: Running terraform plan for destroy: "
-              echo "DEBUG: ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -destroy -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}"
-              ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -destroy -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
-            else
-              echo "DEBUG: Skipping terraform plan because SKIP_DESTROY flag in this stack is true"
-              echo "terraform_exit_code=0" >> $GITHUB_OUTPUT
-              echo "planned_changes=false" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          else
-            echo "DEBUG: Running standard terraform plan"
-            echo "DEBUG: ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES}"
-            ${TERRAFORM_COMMAND} plan ${TERRAFORM_ARGS} -out=tfplan -detailed-exitcode -compact-warnings ${TERRAFORM_VARIABLES} || terraform_exit_code=$?
-          fi
-
-          echo "DEBUG: Terraform exit code is $terraform_exit_code"
-          echo "terraform_exit_code=$terraform_exit_code" >> $GITHUB_OUTPUT
-
-          ${TERRAFORM_COMMAND} show -json tfplan | jq > tfplan.json
-          
-          if [ $terraform_exit_code -eq 0 ]; then
-            echo "DEBUG: Terraform Plan exit code indicated no changes."
-            planned_changes=false
-          elif [ $terraform_exit_code -eq 2 ]; then
-            echo "DEBUG: Terraform Plan exit code indicated changes."
-            planned_changes=true
-          else
-            echo "ERROR: Terraform plan failed with exit code $terraform_exit_code" >&2
-            exit $terraform_exit_code
-          fi
-
-          echo "planned_changes=$planned_changes" >> $GITHUB_OUTPUT
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-plan.sh
 
       - name: Update stack matrix
         working-directory: "${{ matrix.stack.directory }}"
-        run: |
-          echo "runner_label is: ${{ matrix.stack.runner_label }}"
-
-          jq -n \
-            --arg dir "${{ matrix.stack.directory }}" \
-            --argjson runner_label '${{ toJSON(matrix.stack.runner_label) }}' \
-            --argjson planned_changes "${{ steps.tf_plan.outputs.planned_changes }}" \
-            --argjson order "${{ matrix.stack.order }}" \
-            --argjson skip_when_destroying "${{ matrix.stack.skip_when_destroying }}" \
-            '{
-              directory: $dir,
-              runner_label: ($runner_label | if type=="array" then . else [.] end),
-              planned_changes: $planned_changes,
-              order: $order,
-              skip_when_destroying: $skip_when_destroying
-            }' \
-            > updated_matrix.json
-
-          cat updated_matrix.json
+        env:
+          STACK_DIRECTORY: ${{ matrix.stack.directory }}
+          RUNNER_LABEL_JSON: '${{ toJSON(matrix.stack.runner_label) }}'
+          PLANNED_CHANGES: ${{ steps.tf_plan.outputs.planned_changes }}
+          STACK_ORDER: ${{ matrix.stack.order }}
+          SKIP_WHEN_DESTROYING: ${{ matrix.stack.skip_when_destroying }}
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/update-stack-matrix.sh
   
       - name: Terraform Apply
         # We don't want to apply if there are no planned changes OR if we're destroying and
@@ -405,10 +286,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
           GH_TOKEN: "${{ secrets.GH_TOKEN }}"
-        run: |
-          echo "DEBUG: Running Terraform apply command:"
-          echo "DEBUG: ${TERRAFORM_COMMAND} apply ${TERRAFORM_ARGS} tfplan"
-          ${TERRAFORM_COMMAND} apply ${TERRAFORM_ARGS} tfplan
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/terraform-apply.sh
 
       - name: Encrypt Terraform plan
         id: encrypt_plan
@@ -416,15 +294,7 @@ jobs:
           ENCRYPTION_PASSPHRASE: ${{ secrets.TF_PLAN_ENCRYPTION_PASSPHRASE }}
         working-directory: "${{ matrix.stack.directory }}"
         if: ${{ inputs.upload_plan && steps.tf_plan.conclusion != 'skipped' && steps.tf_plan.outputs.planned_changes == 'true' }}
-        run: |
-          pass_file=$(mktemp)
-          printf "%s" "$ENCRYPTION_PASSPHRASE" > "$pass_file"
-          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan
-          gpg --batch --symmetric --passphrase-file "$pass_file" tfplan.json
-
-          # Delete unencrypted plan files so that they can't be accidentally uploaded by a
-          # an empty artefact_path input.
-          rm tfplan tfplan.json
+        run: $GITHUB_WORKSPACE/.github/scripts/terraform-core/encrypt-terraform-plan.sh
 
       - name: Upload Job Artefacts
         uses: actions/upload-artifact@v4
