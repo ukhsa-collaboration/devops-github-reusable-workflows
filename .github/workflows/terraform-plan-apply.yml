@@ -146,6 +146,7 @@ jobs:
     needs:
       - check
       - filter_matrix
+    if: ${{ needs.filter_matrix.outputs.empty_deps != '[]' && needs.filter_matrix.outputs.empty_deps != '' }}
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}
@@ -169,6 +170,7 @@ jobs:
       - check
       - filter_matrix
       - plan_apply_no_deps
+    if: ${{ needs.filter_matrix.outputs.non_empty_deps != '[]' && needs.filter_matrix.outputs.non_empty_deps != '' }}
     with:
       environment_name: ${{ inputs.environment_name }}
       aws_region: ${{ inputs.aws_region }}

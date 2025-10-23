@@ -46,7 +46,7 @@ log_debug "Stacks with dependencies: ${non_empty_deps}"
 log_debug "Combined stacks: ${combined_stacks}"
 
 {
-    printf 'empty_deps=%sn' "$empty_deps"
-    printf 'non_empty_deps=%sn' "$non_empty_deps"
-    printf 'combined_stacks=%sn' "$combined_stacks"
-} >>"$GITHUB_OUTPUT"
+  printf 'empty_deps=%s\n' "$empty_deps"
+  printf 'non_empty_deps=%s\n' "$non_empty_deps"
+  printf 'combined_stacks=%s\n' "$combined_stacks"
+} >> "$GITHUB_OUTPUT"
