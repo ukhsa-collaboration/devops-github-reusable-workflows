@@ -38,6 +38,7 @@ Reusable workflow that builds and tests a Python-based container image, surfaces
 | `lint_dockerfile` / `lint_python` | boolean | `true` | Toggle linting stages. |
 | `enable_trivy` | boolean | `true` | Run Trivy scan when image is pushed. |
 | `sign_release` | boolean | `false` | Sign the pushed digest with Cosign during the release job. |
+| `ecr_registry_namespace` | string | "" | The namespace of the ECR registry. Uses service_identifier by if left empty. |
 
 > Additional inputs are documented inline in `.github/workflows/container-image-build-python.yml` but are not typically changed.
 

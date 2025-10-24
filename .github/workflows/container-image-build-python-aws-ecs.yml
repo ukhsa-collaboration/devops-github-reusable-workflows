@@ -314,7 +314,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f
         with:
-          images: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}
+          images: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}
           tags: |
             type=sha
             type=ref,event=branch
