@@ -141,6 +141,10 @@ on:
         required: false
         default: "AWS_DEPLOY_ROLE"
         type: string
+      ecr_registry_namespace:
+        description: The ECR registry namespace (if different to the service_identifier)
+        default: ""
+        type: string
     secrets:
       AWS_ACCOUNT_ID_ECR_REGISTRY:
         required: false
@@ -157,6 +161,7 @@ env:
   APP_NAME: ${{ inputs.app_name }}
   AWS_REGION: ${{ inputs.aws_region }}
   SERVICE_IDENTIFIER: ${{ inputs.service_identifier }}
+  ECR_NAMESPACE:  ${{ inputs.ecr_registry_namespace || inputs.service_identifier }}
 
 jobs:
   build:
@@ -349,13 +354,13 @@ jobs:
           load: ${{ inputs.push_image == false }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: ${{ inputs.push_image && format('type=registry,ref={0}/{1}/{2}:latest', env.ECR_REGISTRY_HOST, env.SERVICE_IDENTIFIER, env.APP_NAME) || '' }}
+          cache-from: ${{ inputs.push_image && format('type=registry,ref={0}/{1}/{2}:latest', env.ECR_REGISTRY_HOST, env.ECR_NAMESPACE, env.APP_NAME) || '' }}
           cache-to: ${{ inputs.push_image && 'type=inline' || '' }}
           build-args: |
             APP_CODE_COMMIT_HASH=${{ github.sha }}
             APP_VERSION=${{ steps.image-version.outputs.value }}
             ${{ inputs.build_args }}
-    
+
       - name: Summarise results
         if: always()
         id: build-summary
@@ -460,7 +465,7 @@ jobs:
           DIGEST: ${{ needs.build.outputs.image_digest }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          IMAGE="${REGISTRY_HOST}/${SERVICE_IDENTIFIER}/${APP_NAME}@${DIGEST}"
+          IMAGE="${REGISTRY_HOST}/${ECR_NAMESPACE}/${APP_NAME}@${DIGEST}"
           cosign sign --yes "$IMAGE"
 
       - name: Append release notes
@@ -575,7 +580,7 @@ jobs:
         with:
           task-definition: task-definition.json
           container-name: ${{ matrix.environment.container_name }}
-          image: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
+          image: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
 
       - name: Deploy ECS service
         if: matrix.environment.ecs_service != '' && matrix.environment.ecs_cluster != '' && steps.render-task-def.outputs.task-definition
