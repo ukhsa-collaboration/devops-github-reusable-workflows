@@ -280,7 +280,7 @@ jobs:
           PLANNED_CHANGES: ${{ steps.tf_plan.outputs.planned_changes }}
           STACK_ORDER: ${{ matrix.stack.order }}
           SKIP_WHEN_DESTROYING: ${{ matrix.stack.skip_when_destroying }}
-        run: $WORKFLOW_SCRIPTS_DIR/terraform-core/update-stack-matrix.sh
+        run: python3 $WORKFLOW_SCRIPTS_DIR/terraform-core/update-stack-matrix.py
   
       - name: Terraform Apply
         # We don't want to apply if there are no planned changes OR if we're destroying and

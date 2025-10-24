@@ -126,7 +126,7 @@ jobs:
           ENVIRONMENT_NAME: ${{ inputs.environment_name }}
           STACK_CONFIG_JSON: '${{ needs.define_matrix.outputs.stack_config }}'
         id: filter_matrix
-        run: $WORKFLOW_SCRIPTS_DIR/common/filter-stacks.sh
+        run: python3 $WORKFLOW_SCRIPTS_DIR/common/filter-stacks.py
 
   
   check:
