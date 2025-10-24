@@ -1,0 +1,641 @@
+name: "Container Image Build - Python"
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: Name of the application; used for tagging images and smoke test messaging.
+        required: true
+        type: string
+      service_identifier:
+        description: Identifier used to build registry paths, deployment resource names, and SSM keys.
+        required: true
+        type: string
+      aws_region:
+        description: AWS Region for registry, signing, and deployment operations.
+        required: false
+        default: "eu-west-2"
+        type: string
+      runner_labels:
+        description: JSON array of labels for the runner (e.g. '["ubuntu-latest"]' or '["self-hosted","linux"]').
+        required: false
+        default: '["ubuntu-latest"]'
+        type: string
+      docker_context:
+        description: Build context that contains the Dockerfile.
+        required: false
+        default: "."
+        type: string
+      dockerfile:
+        description: Relative path to the Dockerfile.
+        required: false
+        default: "Dockerfile"
+        type: string
+      registry_hostname:
+        description: Override the container registry hostname (defaults to the AWS ECR hostname assembled from secrets and region).
+        required: false
+        default: ""
+        type: string
+      build_args:
+        description: Optional newline-delimited string of Docker build-args (KEY=VALUE per line).
+        required: false
+        default: ""
+        type: string
+      run_unit_tests:
+        description: Enable or disable unit test execution.
+        required: false
+        default: true
+        type: boolean
+      unit_test_command:
+        description: Command used to execute unit tests.
+        required: false
+        default: "pytest -q"
+        type: string
+      run_integration_tests:
+        description: Enable integration tests during the build job.
+        required: false
+        default: false
+        type: boolean
+      integration_test_command:
+        description: Command used to execute integration tests during the build job. Ignored if run_integration_tests is false.
+        required: false
+        default: ""
+        type: string
+      integration_artifact_path:
+        description: Path (file or directory) to upload after integration tests run.
+        required: false
+        default: "test-results/"
+        type: string
+      push_image:
+        description: Push the image to the remote registry after a successful build.
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: (Optional) SemVer or custom tag applied to the pushed image during the release job.
+        required: false
+        default: ""
+        type: string
+      tag_latest:
+        description: Also tag the release image as latest.
+        required: false
+        default: true
+        type: boolean
+      enable_trivy:
+        description: Run Trivy against the pushed container image.
+        required: false
+        default: true
+        type: boolean
+      enable_snyk:
+        description: Run snyk against the pushed container image.
+        required: false
+        default: false
+        type: boolean
+      sign_release:
+        description: Sign the release image digest with Cosign.
+        required: false
+        default: false
+        type: boolean
+      trivy_severity:
+        description: Comma separated Trivy severities treated as findings.
+        required: false
+        default: "CRITICAL,HIGH"
+        type: string
+      fail_on_trivy_findings:
+        description: Fail the workflow if Trivy reports findings of the configured severity.
+        required: false
+        default: true
+        type: boolean
+      lint_dockerfile:
+        description: Run Hadolint against the Dockerfile.
+        required: false
+        default: true
+        type: boolean
+      lint_python:
+        description: Run Ruff format and lint checks.
+        required: false
+        default: true
+        type: boolean
+      pip_install_extras:
+        description: Optional PEP 508 extras (e.g. "dev") to install when pyproject.toml is present.
+        required: false
+        default: "dev"
+        type: string
+      deploy_environments:
+        description: JSON array of environment descriptors for the deploy job.
+        required: false
+        default: "[]"
+        type: string
+      deployment_checkout_ref:
+        description: Optional ref (branch, tag, SHA) to checkout for deployment scripts/tests.
+        required: false
+        default: ""
+        type: string
+      aws_registry_account_id_secret_name:
+        description: Name of the secret that stores the AWS account id for the target container registry.
+        required: false
+        default: "AWS_ACCOUNT_ID_ECR_REGISTRY"
+        type: string
+      aws_deploy_role_secret_name:
+        description: Name of the secret that stores the IAM role name assumed during registry/deployment operations.
+        required: false
+        default: "AWS_DEPLOY_ROLE"
+        type: string
+      ecr_registry_namespace:
+        description: The ECR registry namespace (if different to the service_identifier)
+        default: ""
+        type: string
+    secrets:
+      AWS_ACCOUNT_ID_ECR_REGISTRY:
+        required: false
+      AWS_DEPLOY_ROLE:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+  pull-requests: write
+
+env:
+  APP_NAME: ${{ inputs.app_name }}
+  AWS_REGION: ${{ inputs.aws_region }}
+  SERVICE_IDENTIFIER: ${{ inputs.service_identifier }}
+  ECR_NAMESPACE:  ${{ inputs.ecr_registry_namespace || inputs.service_identifier }}
+
+jobs:
+  build:
+    name: Build and test image
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 45
+    env:
+      ECR_REGISTRY_HOST: ${{ inputs.registry_hostname != '' && inputs.registry_hostname || format('{0}.dkr.ecr.{1}.amazonaws.com', secrets[inputs.aws_registry_account_id_secret_name], inputs.aws_region) }}
+      ECR_REGISTRY_ID: ${{ secrets[inputs.aws_registry_account_id_secret_name] }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+      pull-requests: write
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+      image_uri: ${{ steps.image-ref.outputs.image_ref }}
+      primary_tag: ${{ steps.image-ref.outputs.image_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Lint Dockerfile with Hadolint
+        if: inputs.lint_dockerfile
+        id: hadolint
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+        run: |
+          test -f "$DOCKERFILE" || { echo "Dockerfile '$DOCKERFILE' not found" >&2; exit 1; }
+          docker run --rm -i hadolint/hadolint:2.12.0 hadolint - < "$DOCKERFILE"
+          # n.b. hadolint/hadolint-action is not a verified action so cannot be used in private ukhsa-collaboratiopn repos.
+
+      - name: Set up Python
+        if: inputs.lint_python || inputs.run_unit_tests || inputs.run_integration_tests
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          cache: "pip"
+
+      - name: Install Ruff
+        if: inputs.lint_python
+        run: python -m pip install ruff
+
+      - name: Ruff formatting
+        if: inputs.lint_python
+        env:
+          NO_COLOR: 1
+        id: ruff-format
+        run: ruff format --check --diff ${{ inputs.docker_context }}
+
+      - name: Ruff linting
+        if: inputs.lint_python
+        env:
+          NO_COLOR: 1
+        id: ruff-lint
+        run: ruff check --diff ${{ inputs.docker_context }}
+
+      - name: Install project dependencies
+        if: inputs.run_unit_tests || inputs.run_integration_tests
+        env:
+          PIP_EXTRAS: ${{ inputs.pip_install_extras }}
+          DOCKER_CONTEXT: ${{ inputs.docker_context }}
+        run: |
+          set -eo pipefail
+          python -m pip install --upgrade pip
+          install_target=""
+          if [ -f pyproject.toml ]; then
+            install_target="."
+          elif [ -n "$DOCKER_CONTEXT" ] && [ -f "$DOCKER_CONTEXT/pyproject.toml" ]; then
+            install_target="$DOCKER_CONTEXT"
+          fi
+
+          if [ -n "$install_target" ]; then
+            # TODO: Once more people are using uv than note, we can use the the astral-sh/setup-uv to setup uv but at the moment it's largely unnecessary.
+            python -m pip install --upgrade uv
+            if [ -n "$PIP_EXTRAS" ]; then
+              uv pip install --system "${install_target}[${PIP_EXTRAS}]" || uv pip install --system "$install_target" || python -m pip install "${install_target}[${PIP_EXTRAS}]" || python -m pip install "$install_target"
+            else
+              uv pip install --system "$install_target" || python -m pip install "$install_target"
+            fi
+          fi
+
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+            if [ -f requirements-dev.txt ]; then
+              python -m pip install -r requirements-dev.txt
+            fi
+          fi
+
+          if [ -n "$DOCKER_CONTEXT" ] && [ "$DOCKER_CONTEXT" != "." ] && [ -f "$DOCKER_CONTEXT/requirements.txt" ]; then
+            python -m pip install -r "$DOCKER_CONTEXT/requirements.txt"
+            if [ -f "$DOCKER_CONTEXT/requirements-dev.txt" ]; then
+              python -m pip install -r "$DOCKER_CONTEXT/requirements-dev.txt"
+            fi
+          fi
+
+      - name: Ensure pytest available when used
+        if: (inputs.run_unit_tests || inputs.run_integration_tests) && (contains(inputs.unit_test_command, 'pytest') || contains(inputs.integration_test_command, 'pytest'))
+        run: python -m pip install pytest pytest-cov
+
+      - name: Run unit tests
+        if: inputs.run_unit_tests
+        id: unit-tests
+        env:
+          UNIT_TEST_COMMAND: ${{ inputs.unit_test_command }}
+        run: bash -eo pipefail -c "$UNIT_TEST_COMMAND"
+
+      - name: Upload coverage artifact
+        if: inputs.run_unit_tests && always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Run integration tests
+        if: inputs.run_integration_tests
+        id: integration-tests
+        env:
+          INTEGRATION_TEST_COMMAND: ${{ inputs.integration_test_command }}
+        run: bash -eo pipefail -c "$INTEGRATION_TEST_COMMAND"
+
+      - name: Upload integration artifacts
+        if: inputs.run_integration_tests && always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integration-artifacts
+          path: ${{ inputs.integration_artifact_path }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Configure AWS credentials
+        if: inputs.push_image || (inputs.release_tag != '' && inputs.deploy_environments != '[]')
+        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID_DEV }}:role/${{ secrets[inputs.aws_deploy_role_secret_name] }}
+          role-session-name: container-build-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: inputs.push_image || (inputs.release_tag != '' && inputs.deploy_environments != '[]')
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076
+        with:
+          registries: "${{ secrets[inputs.aws_registry_account_id_secret_name] }}"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f
+        with:
+          images: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
+
+      - name: Capture image reference
+        id: image-ref
+        run: |
+          primary_tag=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)
+          echo "image_ref=${primary_tag}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${primary_tag##*:}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine application version
+        id: image-version
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DEFAULT_TAG: ${{ steps.image-ref.outputs.image_tag }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "value=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$DEFAULT_TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build container image
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          context: ${{ inputs.docker_context }}
+          file: ${{ inputs.dockerfile }}
+          push: ${{ inputs.push_image }}
+          load: ${{ inputs.push_image == false }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: ${{ inputs.push_image && format('type=registry,ref={0}/{1}/{2}:latest', env.ECR_REGISTRY_HOST, env.ECR_NAMESPACE, env.APP_NAME) || '' }}
+          cache-to: ${{ inputs.push_image && 'type=inline' || '' }}
+          build-args: |
+            APP_CODE_COMMIT_HASH=${{ github.sha }}
+            APP_VERSION=${{ steps.image-version.outputs.value }}
+            ${{ inputs.build_args }}
+
+      - name: Summarise results
+        if: always()
+        id: build-summary
+        env:
+          HADOLINT_OUTCOME: ${{ steps.hadolint.outcome || 'skipped' }}
+          UNIT_OUTCOME: ${{ steps.unit-tests.outcome || 'skipped' }}
+          INT_OUTCOME: ${{ steps.integration-tests.outcome || 'skipped' }}
+          PUSH_IMAGE: ${{ inputs.push_image }}
+          IMAGE_REF: ${{ steps.image-ref.outputs.image_ref }}
+          BUILD_OUTCOME: ${{ steps.build.outcome || 'skipped' }}
+          SUMMARY_FILE: ci-summary.md
+        run: |
+          echo "### Container Image Build" > "$SUMMARY_FILE"
+          echo "| Check | Result |" >> "$SUMMARY_FILE"
+          echo "| --- | --- |" >> "$SUMMARY_FILE"
+          echo "| Dockerfile lint | ${HADOLINT_OUTCOME} |" >> "$SUMMARY_FILE"
+          echo "| Unit tests | ${UNIT_OUTCOME} |" >> "$SUMMARY_FILE"
+          echo "| Integration tests | ${INT_OUTCOME} |" >> "$SUMMARY_FILE"
+          if [ "$PUSH_IMAGE" = "true" ] && [ "$BUILD_OUTCOME" = "success" ] ; then
+            echo "" >> "$SUMMARY_FILE"
+            echo "**Image:** \`$IMAGE_REF\`" >> "$SUMMARY_FILE"
+          fi
+          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Share summary in pull requests
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'ci-summary.md';
+            if (!fs.existsSync(path)) {
+              core.info('Summary file not found; skipping comment update.');
+              return;
+            }
+            const issueNumber = context.payload?.pull_request?.number;
+            if (!issueNumber) {
+              core.info('No pull request number available; skipping comment update.');
+              return;
+            }
+            const body = fs.readFileSync(path, 'utf8');
+            const marker = '<!-- container-image-build summary -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(comment => comment.user.type === 'Bot' && comment.body.includes(marker));
+            const finalBody = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: finalBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: finalBody,
+              });
+            }
+
+  release:
+    name: Release Image
+    needs: build
+    if: inputs.push_image && inputs.release_tag != '' && inputs.sign_release
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 15
+    env:
+      ECR_REGISTRY_HOST: ${{ inputs.registry_hostname != '' && inputs.registry_hostname || format('{0}.dkr.ecr.{1}.amazonaws.com', secrets[inputs.aws_registry_account_id_secret_name], inputs.aws_region) }}
+      ECR_REGISTRY_ID: ${{ secrets[inputs.aws_registry_account_id_secret_name] }}
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+      pull-requests: none
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID_DEV }}:role/${{ secrets[inputs.aws_deploy_role_secret_name] }}
+          role-session-name: release-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-release
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076
+        with:
+          registries: "${{ env.ECR_REGISTRY_ID }}"
+
+      - name: Install cosign
+        if: inputs.sign_release
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159
+
+      - name: Sign release image digest
+        if: inputs.sign_release
+        env:
+          REGISTRY_HOST: ${{ env.ECR_REGISTRY_HOST }}
+          DIGEST: ${{ needs.build.outputs.image_digest }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          IMAGE="${REGISTRY_HOST}/${ECR_NAMESPACE}/${APP_NAME}@${DIGEST}"
+          cosign sign --yes "$IMAGE"
+
+      - name: Append release notes
+        run: |
+          {
+            echo "### Image Release"
+            echo "Tagged ${{ inputs.release_tag }} for ${{ env.APP_NAME }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  prepare-deploy:
+    name: Prepare deployment environments
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.compute.outputs.matrix }}
+    env:
+      RAW_ENVIRONMENTS: ${{ inputs.deploy_environments }}
+      APP_NAME: ${{ inputs.app_name }}
+      SERVICE_IDENTIFIER: ${{ inputs.service_identifier }}
+      PUSH_IMAGE: ${{ inputs.push_image }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - id: compute
+        run: |
+          python <<'PY'
+          import json
+          import os
+
+          push_image = (os.getenv('PUSH_IMAGE') or '').lower() == 'true'
+          release_tag = os.getenv('RELEASE_TAG') or ''
+          raw = (os.getenv('RAW_ENVIRONMENTS') or '').strip()
+          if not push_image or not release_tag or not raw:
+              matrix = []
+          else:
+              try:
+                  data = json.loads(raw)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f"deploy_environments must be valid JSON: {exc}")
+              if not isinstance(data, list):
+                  raise SystemExit('deploy_environments must be a JSON array')
+              matrix = []
+              app = os.getenv('APP_NAME') or ''
+              service_identifier = os.getenv('SERVICE_IDENTIFIER') or ''
+              for item in data:
+                  if isinstance(item, str):
+                      obj = {'name': item}
+                  elif isinstance(item, dict):
+                      obj = dict(item)
+                  else:
+                      continue
+                  name = obj.get('name')
+                  if not name:
+                      continue
+                  env_lower = str(name).lower()
+                  env_upper = str(name).upper()
+                  obj.setdefault('aws_account_id_secret', f'AWS_ACCOUNT_ID_{env_upper}')
+                  obj.setdefault('container_name', 'app')
+                  obj.setdefault('task_definition', f'aw-{service_identifier}-euw2-{env_lower}-ecssvc-{app}')
+                  obj.setdefault('ecs_service', f'aw-{service_identifier}-euw2-{env_lower}-ecssvc-{app}')
+                  obj.setdefault('ecs_cluster', f'aw-{service_identifier}-euw2-{env_lower}-ecscluster')
+                  matrix.append(obj)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"matrix={json.dumps(matrix)}\n")
+          PY
+
+  deploy:
+    name: Deploy ${{ matrix.environment.name }}
+    needs: [release, prepare-deploy]
+    if: inputs.push_image && inputs.release_tag != '' && needs.prepare-deploy.outputs.matrix != '[]'
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 45
+    env:
+      ECR_REGISTRY_HOST: ${{ inputs.registry_hostname != '' && inputs.registry_hostname || format('{0}.dkr.ecr.{1}.amazonaws.com', secrets[inputs.aws_registry_account_id_secret_name], inputs.aws_region) }}
+    strategy:
+      max-parallel: 1
+      matrix:
+        environment: ${{ fromJSON(needs.prepare-deploy.outputs.matrix != '' && needs.prepare-deploy.outputs.matrix || '[]') }}
+    environment: ${{ matrix.environment.name }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+      pull-requests: none
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@5fd3084fc36e372ff1fff382a39b10d03659f355
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets[matrix.environment.aws_account_id_secret] }}:role/${{ secrets[inputs.aws_deploy_role_secret_name] }}
+          role-session-name: deploy-${{ matrix.environment.name }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update Parameter Store image tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          PARAMETER_NAME: ${{ matrix.environment.ssm_parameter_name || format('/{0}/{1}/image_tag', inputs.service_identifier, inputs.app_name) }}
+        run: |
+          test -n "$PARAMETER_NAME" || { echo "Parameter name missing"; exit 1; }
+          test -n "$RELEASE_TAG" || { echo "Release tag missing"; exit 1; }
+          aws ssm put-parameter --name "$PARAMETER_NAME" --type "String" --value "$RELEASE_TAG" --overwrite
+
+      - name: Download ECS task definition
+        if: matrix.environment.task_definition != ''
+        env:
+          TASK_DEFINITION: ${{ matrix.environment.task_definition }}
+        run: |
+          aws ecs describe-task-definition --task-definition "$TASK_DEFINITION" --query taskDefinition > task-definition.json
+
+      - name: Render ECS task definition
+        if: matrix.environment.task_definition != '' && matrix.environment.container_name != ''
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@5cb8c74c1b1ecaec4c8ea82eff82c009333509ce
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ matrix.environment.container_name }}
+          image: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
+
+      - name: Deploy ECS service
+        if: matrix.environment.ecs_service != '' && matrix.environment.ecs_cluster != '' && steps.render-task-def.outputs.task-definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@4b08990e8909cf36bc2ca95f994312f090c41865
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ matrix.environment.ecs_service }}
+          cluster: ${{ matrix.environment.ecs_cluster }}
+          wait-for-service-stability: true
+
+      - name: Checkout repository
+        if: matrix.environment.integration_test_command != '' || matrix.environment.deploy_script != ''
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          ref: ${{ inputs.deployment_checkout_ref != '' && inputs.deployment_checkout_ref || github.sha }}
+
+      - name: Set up Python for deployment tasks
+        if: matrix.environment.integration_test_command != ''
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          cache: "pip"
+
+      - name: Run deployment script
+        if: matrix.environment.deploy_script != ''
+        env:
+          DEPLOY_ENVIRONMENT: ${{ matrix.environment.name }}
+          DEPLOY_IMAGE: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
+        run: bash -eo pipefail ${{ matrix.environment.deploy_script }}
+
+      - name: Run environment specific integration tests
+        if: matrix.environment.integration_test_command != ''
+        env:
+          DEPLOY_ENVIRONMENT: ${{ matrix.environment.name }}
+          BASE_URL: ${{ matrix.environment.base_url }}
+        run: bash -eo pipefail ${{ matrix.environment.integration_test_command }}
+
+      - name: Smoke test deployed service
+        if: matrix.environment.smoke_test_url != ''
+        env:
+          URL: ${{ matrix.environment.smoke_test_url }}
+        run: |
+          code=$(curl -L -s -o /dev/null -w "%{http_code}" "$URL")
+          if [ "$code" -ne 200 ]; then
+            echo "Smoke test failed with status $code for $URL" >&2
+            exit 1
+          fi
+          echo "Smoke test succeeded for $URL"
+
+      - name: Append deployment summary
+        if: always()
+        run: |
+          {
+            echo "### Deployment (${{ matrix.environment.name }})"
+            echo "Environment: ${{ matrix.environment.name }}"
+            if [ -n "${{ matrix.environment.smoke_test_url }}" ]; then
+              echo "Smoke test: ${{ matrix.environment.smoke_test_url }}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
