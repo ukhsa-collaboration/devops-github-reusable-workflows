@@ -101,18 +101,36 @@ env:
   TERRAFORM_COMMAND: "terraform"
 
 jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      stack-matrix: ${{ steps.set-matrix.outputs.stack }}
+    steps:
+      - id: set-matrix
+        run: |
+          #!/bin/bash
+          if [[ "${{ inputs.stack_config }}" == "" ]] || [[ "${{ inputs.stack_config }}" == "[]" ]] || [[ "${{ inputs.stack_config }}" == "null" ]]; then
+            echo 'stack=[{"skip_job": true}]' >> $GITHUB_OUTPUT
+          else
+            echo "stack=${{ inputs.stack_config }}" >> $GITHUB_OUTPUT
   terraform:
+    needs: prepare-matrix
+    strategy:
+      max-parallel: ${{ inputs.max_parallel}}
+      matrix:
+          stack: ${{ fromJson(needs.prepare-matrix.outputs.stack-matrix)}}   
     name: "Initialise and run Terraform for ${{ matrix.stack.directory }}"
     runs-on: "${{ matrix.stack.runner_label }}"
     environment: ${{ inputs.environment_name }}
     defaults:
       run:
         shell: bash
-    strategy:
-      matrix:
-        stack: "${{ fromJSON(inputs.stack_config) }}"
-      max-parallel: ${{ inputs.max_parallel }}
     steps:
+      - name: Skip job because matrix is empty
+        if: ${{ matrix.stack.skip_job == true }}
+        run: |
+          echo "No stacks to process. Skipping."
+          exit 0
       - name: Checkout code
         uses: actions/checkout@v4
         with:
