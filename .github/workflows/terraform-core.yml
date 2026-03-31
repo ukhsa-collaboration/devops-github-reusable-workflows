@@ -104,7 +104,9 @@ jobs:
   terraform:
     name: "Initialise and run Terraform for ${{ matrix.stack.directory }}"
     runs-on: "${{ matrix.stack.runner_label }}"
-    environment: ${{ inputs.environment_name }}
+    environment:
+      name: ${{ inputs.environment_name }}
+      deployment: ${{ inputs.execute_terraform_plan == true }}
     defaults:
       run:
         shell: bash
@@ -126,7 +128,7 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Export variables
-        run: | 
+        run: |
           echo "state_name=$(basename ${{ matrix.stack.directory }})" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
@@ -204,7 +206,7 @@ jobs:
             eval $(ssh-agent -a $SSH_AUTH_SOCK -s)
             echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
           fi
-          
+
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
 
       - name: Configure Terraform plugin cache
@@ -220,7 +222,7 @@ jobs:
           key: terraform-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
           restore-keys: |
             terraform-${{ runner.os }}-
-  
+
       - name: Terraform Init with AWS S3 Backend
         working-directory: "${{ matrix.stack.directory }}"
         if: ${{ steps.backend.outputs.backend_type == 's3' }}
@@ -236,7 +238,7 @@ jobs:
           echo "DEBUG: State will be persisted to: s3://$s3_bucket/$s3_key"
           # `dynamodb_table` is deprecated by Terraform from verison 1.11.0 . Use the new use_lockfile
           # flag if the Terraform version supports it.
-          # TODO: Remove this conditional in future. 
+          # TODO: Remove this conditional in future.
           if [ "$(printf '%s\n' "1.11.0" "$TF_VERSION" | sort -V | head -n1)" = "1.11.0" ]; then
             echo "DEBUG: Will use native S3 locking to lock Terraform state"
             terraform init \
@@ -352,7 +354,7 @@ jobs:
           echo "terraform_exit_code=$terraform_exit_code" >> $GITHUB_OUTPUT
 
           ${TERRAFORM_COMMAND} show -json tfplan | jq > tfplan.json
-          
+
           if [ $terraform_exit_code -eq 0 ]; then
             echo "DEBUG: Terraform Plan exit code indicated no changes."
             planned_changes=false
@@ -387,7 +389,7 @@ jobs:
             > updated_matrix.json
 
           cat updated_matrix.json
-  
+
       - name: Terraform Apply
         # We don't want to apply if there are no planned changes OR if we're destroying and
         # this stack's dependencies.json file has `skip_when_destroying` set to true.
