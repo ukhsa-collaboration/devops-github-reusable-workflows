@@ -607,7 +607,7 @@ jobs:
         if: matrix.environment.deploy_script != ''
         env:
           DEPLOY_ENVIRONMENT: ${{ matrix.environment.name }}
-          DEPLOY_IMAGE: ${{ env.ECR_REGISTRY_HOST }}/${{ env.SERVICE_IDENTIFIER }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
+          DEPLOY_IMAGE: ${{ env.ECR_REGISTRY_HOST }}/${{ env.ECR_NAMESPACE }}/${{ env.APP_NAME }}:${{ inputs.release_tag }}
         run: bash -eo pipefail ${{ matrix.environment.deploy_script }}
 
       - name: Run environment specific integration tests
