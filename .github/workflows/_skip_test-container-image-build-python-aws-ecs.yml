@@ -1,13 +1,13 @@
-name: "Test Build Container Image"
+name: "Test Container Image Build Workflow - Python"
 
 on:
   pull_request:
     branches:
       - main
     paths-ignore:
-      - .github/workflows/_test-container-image-build.yml
-      - .github/workflows/container-image-build.yml
-      - .github/workflows/container-image-release.yml
+      - .github/workflows/_test-container-image-build-python.yml
+      - .github/workflows/container-image-build-python.yml
+      - docs/container-image-build-python.md
 
 jobs:
   container_image_build_regression_test:
