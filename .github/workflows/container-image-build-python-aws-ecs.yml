@@ -533,7 +533,7 @@ jobs:
 
   deploy:
     name: Deploy ${{ matrix.environment.name }}
-    needs: [release, prepare-deploy]
+    needs: [prepare-deploy]
     if: inputs.push_image && inputs.release_tag != '' && needs.prepare-deploy.outputs.matrix != '[]'
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 45
