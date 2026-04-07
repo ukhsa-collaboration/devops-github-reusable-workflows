@@ -7,7 +7,7 @@ Reusable workflow that builds and tests a Python-based container image, surfaces
 - Prefers `pyproject.toml` (with pinned dependencies and optional extras) but falls back to requirements.txt and requirements-dev.txt files.
 - Runs Hadolint (optional) plus Ruff format/lint checks for Python projects.
 - Supports arbitrary unit/integration test commands; results are summarised and commented on PRs.
-- Builds with `docker/build-push-action` without Github-specific caching so it works well on self-hosted runners.
+- Builds with `docker/build-push-action` without GitHub-specific caching so it works well on self-hosted runners.
 - Optionally pushes/publishes to Amazon ECR, signs release digests with Cosign, and deploys to ECS services per-environment.
 
 ## Prerequisites
@@ -38,9 +38,9 @@ Reusable workflow that builds and tests a Python-based container image, surfaces
 | `lint_dockerfile` / `lint_python` | boolean | `true` | Toggle linting stages. |
 | `enable_trivy` | boolean | `true` | Run Trivy scan when image is pushed. |
 | `sign_release` | boolean | `false` | Sign the pushed digest with Cosign during the release job. |
-| `ecr_registry_namespace` | string | "" | The namespace of the ECR registry. Uses service_identifier by if left empty. |
+| `ecr_registry_namespace` | string | "" | The namespace of the ECR registry. Uses `service_identifier` if left empty. |
 
-> Additional inputs are documented inline in `.github/workflows/container-image-build-python.yml` but are not typically changed.
+> Additional inputs are documented inline in `.github/workflows/container-image-build-python-aws-ecs.yml` but are not typically changed.
 
 ## Deployment Matrix Schema
 Provide `deploy_environments` as a JSON array. Each object supports:
@@ -76,7 +76,7 @@ on:
 
 jobs:
   container:
-    uses: ukhsa-colloboration/devops-github-reusable-workflows/.github/workflows/container-image-build-python.yml@v1
+    uses: ukhsa-collaboration/devops-github-reusable-workflows/.github/workflows/container-image-build-python-aws-ecs.yml@v1
     with:
       app_name: frontend
       service_identifier: my-service

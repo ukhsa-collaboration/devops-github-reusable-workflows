@@ -10,7 +10,7 @@ This repository contains several reusable GitHub Actions workflows. Below is an 
 2. [Terraform Plan Apply](docs/terraform-plan-apply.md)
 3. [Terraform Destroy](docs/terraform-destroy.md)
 4. [Terraform Core](docs/terraform-core.md)
-6. [Container Image Build (Python)](docs/container-image-build-python.md)
+5. [Container Image Build (Python)](docs/container-image-build-python-aws-ecs.md)
 
 ## Testing
 
