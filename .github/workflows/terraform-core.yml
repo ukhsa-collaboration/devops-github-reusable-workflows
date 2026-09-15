@@ -105,6 +105,10 @@ jobs:
     name: "Initialise and run Terraform for ${{ matrix.stack.directory }}"
     runs-on: "${{ matrix.stack.runner_label }}"
     environment: ${{ inputs.environment_name }}
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -179,7 +183,7 @@ jobs:
           tf_file: "${{ matrix.stack.directory }}/terraform.tf"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "${{ steps.terraform_version.outputs.tf_version }}"
           terraform_wrapper: false
