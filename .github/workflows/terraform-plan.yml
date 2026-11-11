@@ -125,12 +125,27 @@ jobs:
 
       - uses: actions/download-artifact@v4
         id: download
+        continue-on-error: true
+        with:
+          name: "${{ steps.variables.outputs.state_name }}-${{ inputs.environment_name }}-artefacts"
+          path: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}"
+
+      - name: Retry artifact download if needed
+        if: failure() && steps.download.outcome == 'failure'
+        run: |
+          echo "Artifact download failed, retrying after 5 seconds..."
+          sleep 5
+          exit 1
+
+      - uses: actions/download-artifact@v4
+        if: failure() && steps.download.outcome == 'failure'
+        id: download_retry
         with:
           name: "${{ steps.variables.outputs.state_name }}-${{ inputs.environment_name }}-artefacts"
           path: "${{ inputs.environment_name }}/${{ steps.variables.outputs.state_name }}"
 
       - name: Check if there are any changes
-        working-directory: ${{ steps.download.outputs.download-path }}
+        working-directory: ${{ (steps.download.outcome == 'success' && steps.download.outputs.download-path) || (steps.download_retry.outcome == 'success' && steps.download_retry.outputs.download-path) }}
         id: changes
         run: |
           planned_changes=$(jq -r '.planned_changes' updated_matrix.json)
